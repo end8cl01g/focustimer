@@ -14,6 +14,22 @@
   - 核心規範: https://jules.google/docs/
   - API 文件: 使用 `context7` 查詢最新 Telegram 與 Google Calendar API 規範。
 
+## 環境設定 (Environment Setup)
+1. **Telegram Bot**:
+   - 透過 @BotFather 建立機器人並取得 `BOT_TOKEN`。
+   - 紀錄機器人的 Username 以便測試。
+2. **Google Apps Script**:
+   - 建立新的 GAS 專案 (script.google.com)。
+   - 在「服務 (Services)」中新增 「Google Calendar API」。
+   - 在專案設定中確保時區設定為 `Asia/Taipei` (或目標時區)。
+3. **部署與 Webhook**:
+   - 部署為「網頁應用程式 (Web App)」。
+   - 執行身份：`Me` (您的 Google 帳號)。
+   - 存取權限：`Anyone` (任何人，包含匿名)。
+   - 使用 Telegram API 的 `setWebhook` 方法，將 Web App URL 綁定至機器人。
+4. **開發工具 (選配)**:
+   - 若本地開發，建議使用 `clasp` (Command Line Apps Script Projects) 進行程式碼同步。
+
 ## 功能需求
 1. **查詢可用時段**:
    - 使用者點選日期後，系統檢查 Google 日曆，回傳該日空檔。
