@@ -1,6 +1,6 @@
 # AGENTS.md - Focus Timer Telegram Bot (Google Calendar Booking)
 
-本專案為一個部署於 **Google Cloud Run** 的 Telegram Bot，透過 **Google Apps Script (GAS) Bridge** 與 Google 日曆同步，支援使用者透過 Inline Keyboards 查詢空檔並預約計時行程。
+本專案為一個部署於 **Google Cloud Run** 的 Telegram Bot，透過 **Google Apps Script (GAS) Bridge** 與 Google 日曆同步，支援使用者查詢空檔並預約計時行程。
 
 ## 技術棧
 - **後端語言**: Node.js (TypeScript)
@@ -34,17 +34,17 @@
 ```
 
 ## 已實作功能
-1. **查詢今日日曆** — 透過 GAS 獲取今日的所有行程，並列出時間與標題。
-2. **一鍵預約** — 點擊 Inline Button 即可將 Focus Session 寫入 Google 日曆。
-3. **雙模式運行** — `NODE_ENV=development` 使用 Polling，`production` 使用 Webhook 並自動註冊。
-4. **自動喚醒 (Keep-warm)** — 在 SIGTERM 接收時嘗試自我請求以維持啟動狀態（實驗性）。
+1. **查詢今日日曆** (✅) — 透過 GAS 獲取今日的所有行程，並列出時間、標題與描述。
+2. **核心預約邏輯** (✅) — `CalendarManager` 已實作 `createEvent` 與 `getFreeSlots`，並與 GAS 對接。
+3. **雙模式運行** (✅) — `NODE_ENV=development` 使用 Polling，`production` 使用 Webhook 並自動註冊。
+4. **自動喚醒 (Keep-warm)** (✅) — 接收 SIGTERM 時嘗試自我請求，並在 `index.ts` 中實作健康檢查路徑。
 
-## 待實作功能
-- [ ] 使用者白名單控管
-- [ ] 自訂行程時長 (目前固定 1 小時)
-- [ ] 管理行程 (查詢/取消/更改)
-- [ ] 重複預約衝突檢查
-- [ ] Secret Manager 整合 (目前使用環境變數)
+## 待實作與優化功能
+- [ ] **預約 UI 流程整合** — 目前 `bot.ts` 中 `📝 管理我的預約` 為佔位符，需整合 `getFreeSlots` 顯示可預約時段。
+- [ ] **使用者白名單控管** — 目前任何知道 Bot 的人都能預約。
+- [ ] **自訂行程時長** — 目前預設為 1 小時。
+- [ ] **重複預約衝突檢查** — 雖然 GAS 有基本邏輯，但前端 UI 尚未處理。
+- [ ] **Secret Manager 整合** — 提升環境變數安全性。
 
 ## 環境變數
 | 變數名稱 | 說明 |
@@ -60,7 +60,7 @@
 ### 1. 部署 GAS Bridge
 1. 前往 [Google Apps Script](https://script.google.com/)。
 2. 建立新專案並貼入 `gas_bridge.js` 內容。
-3. 若需要，設定 `API_KEY` 常數。
+3. 若需要，設定 `API_KEY` 常數（建議在 `doPost` 中檢查 `body.apiKey`）。
 4. 部署為 **Web App**：
    - Execute as: **Me**
    - Who has access: **Anyone**
@@ -72,6 +72,6 @@
 3. 執行 `.\deploy.ps1` 一鍵建構與部署至 Cloud Run。
 
 ## 注意事項
-- **時區**: 預設 `Asia/Taipei`。
-- **GAS 限制**: Google 帳號對 Apps Script 每日調用有配額限制，一般個人帳號足夠使用。
-- **安全性**: 務必設定 `GAS_API_KEY` 以防止他人直接調用您的日曆橋樑。
+- **時區**: 程式碼中多處硬編碼為 `Asia/Taipei` (UTC+8)。
+- **GAS 限制**: Google 帳號對 Apps Script 每日調用有配額限制。
+- **安全性**: 務必設定 `GAS_API_KEY`。
