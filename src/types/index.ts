@@ -9,3 +9,11 @@ export interface TimeSlot {
     start: Date;
     end: Date;
 }
+
+export interface CalendarEvent {
+    id: string;
+    title: string;
+    start: Date;
+    end: Date;
+    description?: string;
+}
