@@ -25,10 +25,13 @@ async function gasCall<T>(action: string, body: Record<string, unknown>): Promis
         throw new Error('GAS_WEBAPP_URL not configured');
     }
 
-    const url = `${GAS_URL}?action=${action}`;
-    const payload = { ...body, apiKey: GAS_API_KEY };
+    // Use URL object to handle potential existing query parameters safely
+    const gasUrl = new URL(GAS_URL);
+    gasUrl.searchParams.set('action', action);
 
-    const response = await fetch(url, {
+    const payload = { ...body, action, apiKey: GAS_API_KEY };
+
+    const response = await fetch(gasUrl.toString(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
