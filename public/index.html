@@ -88,11 +88,18 @@
         async function fetchTasks() {
             try {
                 const response = await fetch('/api/tasks');
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    const msg = errorData.details ? `${errorData.error} (${errorData.details})` : (errorData.error || `伺服器錯誤: ${response.status}`);
+                    throw new Error(msg);
+                }
                 tasks = await response.json();
                 renderTasks();
             } catch (error) {
-                console.error(error);
-                document.getElementById('loading').innerText = '載入失敗，請稍後再試。';
+                console.error('fetchTasks error:', error);
+                const loading = document.getElementById('loading');
+                loading.innerText = '載入失敗：' + error.message;
+                loading.style.display = 'block';
             }
         }
 
@@ -138,6 +145,14 @@
         function renderTasks() {
             const list = document.getElementById('task-list');
             const loading = document.getElementById('loading');
+
+            if (!Array.isArray(tasks)) {
+                console.error('Tasks is not an array:', tasks);
+                loading.innerText = '載入失敗：資料格式錯誤';
+                loading.style.display = 'block';
+                return;
+            }
+
             loading.style.display = 'none';
 
             if (tasks.length === 0) {
