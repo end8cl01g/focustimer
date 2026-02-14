@@ -29,8 +29,8 @@ const API_KEY = ''; // Set a secret key here, leave empty to disable auth
 
 function doPost(e) {
     try {
-        const action = e.parameter.action;
         const body = JSON.parse(e.postData.contents || '{}');
+        const action = e.parameter.action || body.action;
 
         // Auth check
         if (API_KEY && body.apiKey !== API_KEY) {
