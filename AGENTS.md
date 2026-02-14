@@ -28,7 +28,6 @@
 ├── gas_bridge.js         # 部署於 Google Apps Script 的橋樑程式碼
 ├── Dockerfile            # Multi-stage Docker 建構
 ├── cloudbuild.yaml       # Cloud Build 建構與推送步驟
-├── deploy.ps1            # 一鍵部署腳本 (Build + Deploy + 注入環境變數)
 ├── setup.ps1             # GCP 資源初始化腳本 (API/Artifact Registry)
 ├── .env.example          # 環境變數範本
 ├── package.json
@@ -72,7 +71,7 @@
 ### 2. 部署 Telegram Bot
 1. 執行 `.\setup.ps1` 初始化 GCP 資源。
 2. 編輯 `.env` 填入 Token、GAS URL 與 `SERVICE_URL`。
-3. 執行 `.\deploy.ps1` 一鍵建構與部署至 Cloud Run。
+3. 執行 `gcloud builds submit --config cloudbuild.yaml .` 進行部署，或透過 GitHub 連結自動觸發 Cloud Build。
 
 ## 注意事項
 - **時區**: 程式碼中多處硬編碼為 `Asia/Taipei` (UTC+8)。
