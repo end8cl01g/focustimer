@@ -4,27 +4,30 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 export class CalendarManager {
-    private calendar: calendar_v3.Calendar;
+    private calendar: calendar_v3.Calendar | null = null;
     private calendarId: string;
 
     constructor() {
-        const credentialsJson = process.env.GOOGLE_CREDENTIALS_JSON;
-        const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
         this.calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
+    }
 
-        const auth = new google.auth.GoogleAuth({
-            // If GOOGLE_CREDENTIALS_JSON is provided, parse it.
-            // Otherwise, GoogleAuth falls back to GOOGLE_APPLICATION_CREDENTIALS file path.
-            credentials: credentialsJson ? JSON.parse(credentialsJson) : undefined,
-            scopes: ['https://www.googleapis.com/auth/calendar'],
-        });
+    private getCalendar(): calendar_v3.Calendar {
+        if (!this.calendar) {
+            const credentialsJson = process.env.GOOGLE_CREDENTIALS_JSON;
 
-        this.calendar = google.calendar({ version: 'v3', auth });
+            const auth = new google.auth.GoogleAuth({
+                credentials: credentialsJson ? JSON.parse(credentialsJson) : undefined,
+                scopes: ['https://www.googleapis.com/auth/calendar'],
+            });
+
+            this.calendar = google.calendar({ version: 'v3', auth });
+        }
+        return this.calendar;
     }
 
     async listEvents(timeMin: Date, timeMax: Date): Promise<calendar_v3.Schema$Event[]> {
         try {
-            const response = await this.calendar.events.list({
+            const response = await this.getCalendar().events.list({
                 calendarId: this.calendarId,
                 timeMin: timeMin.toISOString(),
                 timeMax: timeMax.toISOString(),
@@ -53,7 +56,7 @@ export class CalendarManager {
         };
 
         try {
-            const response = await this.calendar.events.insert({
+            const response = await this.getCalendar().events.insert({
                 calendarId: this.calendarId,
                 requestBody: event,
             });

@@ -96,8 +96,5 @@ bot.hears('📝 管理我的預約', async (ctx) => {
 
 bot.help((ctx) => ctx.reply('Send /start to restart.'));
 
-// Enable graceful stop
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
 
 export default bot;
