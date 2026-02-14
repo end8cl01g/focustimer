@@ -1,4 +1,4 @@
-import { BookingDetails, TimeSlot } from './types';
+import { BookingDetails, TimeSlot, CalendarEvent } from './types';
 import * as dotenv from 'dotenv';
 dotenv.config();
 
@@ -17,6 +17,7 @@ interface GasEvent {
     start: string;
     end: string;
     htmlLink?: string;
+    description?: string;
 }
 
 async function gasCall<T>(action: string, body: Record<string, unknown>): Promise<T> {
@@ -60,6 +61,21 @@ export class CalendarManager {
         return result.slots.map(s => ({
             start: new Date(s.start),
             end: new Date(s.end),
+        }));
+    }
+
+    async listEvents(start: Date, end: Date): Promise<CalendarEvent[]> {
+        const result = await gasCall<{ events: GasEvent[] }>('listEvents', {
+            timeMin: start.toISOString(),
+            timeMax: end.toISOString(),
+        });
+
+        return result.events.map(ev => ({
+            id: ev.id,
+            title: ev.title,
+            start: new Date(ev.start),
+            end: new Date(ev.end),
+            description: ev.description,
         }));
     }
 
