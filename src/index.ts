@@ -1,3 +1,4 @@
+import path from 'path';
 import express from 'express';
 import bot, { calendarManager } from './bot';
 import * as dotenv from 'dotenv';
@@ -5,7 +6,7 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 const app = express();
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, '../public')));
 
 // Health check
 app.get('/health', (_req, res) => {
