@@ -97,7 +97,7 @@ bot.action(/book:(.+)/, async (ctx) => {
         await ctx.editMessageText(
             `✅ 預約成功！\n` +
             `🕐 ${formatDateTime(startTime)} - ${formatTime(endTime)}\n` +
-            `🔗 ${event.htmlLink || '(no link)'}`
+            (event.htmlLink ? `🔗 ${event.htmlLink}` : `📌 ${event.title || event.id}`)
         );
     } catch (error) {
         console.error('createEvent error:', error);
