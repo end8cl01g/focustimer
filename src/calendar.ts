@@ -70,6 +70,11 @@ export class CalendarManager {
             timeMax: end.toISOString(),
         });
 
+        if (!result || !Array.isArray(result.events)) {
+            console.error('GAS listEvents returned invalid data:', result);
+            return [];
+        }
+
         return result.events.map(ev => ({
             id: ev.id,
             title: ev.title,

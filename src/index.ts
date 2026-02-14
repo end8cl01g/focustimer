@@ -25,7 +25,10 @@ app.get('/api/tasks', async (_req, res) => {
         res.json(events);
     } catch (error) {
         console.error('API /api/tasks error:', error);
-        res.status(500).json({ error: 'Failed to fetch tasks' });
+        res.status(500).json({
+            error: 'Failed to fetch tasks',
+            details: error instanceof Error ? error.message : String(error)
+        });
     }
 });
 
