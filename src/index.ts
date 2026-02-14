@@ -6,58 +6,62 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 8080;
-const SERVICE_URL = process.env.SERVICE_URL; // e.g. https://focustimer-bot-xxxxx.a.run.app
+const SERVICE_URL = process.env.SERVICE_URL;
 
-// Basic health check
-app.get('/', (req, res) => {
-    res.send('Focus Timer Bot is running.');
+// Health check
+app.get('/', (_req, res) => {
+    res.json({ status: 'ok', mode: process.env.NODE_ENV || 'development' });
 });
 
-// Production: Use Webhook
-// Development: Use Polling
 const secretPath = `/webhook/${process.env.TELEGRAM_BOT_TOKEN}`;
 
 if (process.env.NODE_ENV === 'production') {
     app.use(bot.webhookCallback(secretPath));
-    console.log(`Webhook set to path: ${secretPath}`);
+
+    // Auto-register webhook on startup
+    if (SERVICE_URL) {
+        const webhookUrl = `${SERVICE_URL}${secretPath}`;
+        bot.telegram.setWebhook(webhookUrl)
+            .then(() => console.log(`✅ Webhook registered: ${webhookUrl}`))
+            .catch((err) => console.error('❌ Webhook registration failed:', err));
+    } else {
+        console.warn('⚠️ SERVICE_URL not set — webhook not auto-registered');
+    }
 } else {
-    console.log('Starting via polling...');
-    bot.launch();
+    // Local dev: polling mode. Delete any existing webhook first.
+    bot.telegram.deleteWebhook()
+        .then(() => {
+            bot.launch();
+            console.log('🤖 Bot started in polling mode');
+        })
+        .catch((err) => console.error('Failed to delete webhook:', err));
 }
 
 const server = app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
+    console.log(`🚀 Server running on port ${port}`);
 });
 
 // ─── SIGTERM Keep-Warm Loop ───
-// When Cloud Run sends SIGTERM (instance scaling down / idle timeout),
-// we ping our own service URL to force a new instance to spin up,
-// then gracefully shut down. This keeps at least 1 warm instance alive.
 process.on('SIGTERM', async () => {
     console.log('SIGTERM received. Starting keep-warm ping...');
 
-    // 1. Ping self to wake a new instance BEFORE we die
     if (SERVICE_URL) {
         try {
-            const response = await fetch(SERVICE_URL, {
-                signal: AbortSignal.timeout(5000), // 5s timeout
+            const res = await fetch(SERVICE_URL, {
+                signal: AbortSignal.timeout(5000),
             });
-            console.log(`Keep-warm ping sent. Status: ${response.status}`);
+            console.log(`Keep-warm ping → ${res.status}`);
         } catch (err) {
             console.error('Keep-warm ping failed:', err);
         }
-    } else {
-        console.warn('SERVICE_URL not set — skipping keep-warm ping.');
     }
 
-    // 2. Graceful shutdown
     try { bot.stop('SIGTERM'); } catch { }
     server.close(() => {
-        console.log('Server closed. Exiting.');
+        console.log('Server closed.');
         process.exit(0);
     });
 
-    // Force exit after 8s if graceful shutdown hangs
     setTimeout(() => process.exit(1), 8000);
 });
 

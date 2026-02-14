@@ -1,9 +1,8 @@
-import { Telegraf, Context, Markup } from 'telegraf';
+import { Telegraf, Markup } from 'telegraf';
 import { CalendarManager } from './calendar';
 import * as dotenv from 'dotenv';
 dotenv.config();
 
-// Ensure token is present
 if (!process.env.TELEGRAM_BOT_TOKEN) {
     throw new Error('TELEGRAM_BOT_TOKEN must be defined');
 }
@@ -11,7 +10,27 @@ if (!process.env.TELEGRAM_BOT_TOKEN) {
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 const calendarManager = new CalendarManager();
 
-// Middleware for auth could go here (whitelist CHECK)
+// ─── Helpers ───
+
+/** Format a Date to HH:MM in Asia/Taipei — works on Alpine (no ICU needed) */
+function formatTime(d: Date): string {
+    const h = new Date(d.getTime() + 8 * 3600000).getUTCHours();
+    const m = new Date(d.getTime() + 8 * 3600000).getUTCMinutes();
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/** Format a Date to YYYY/MM/DD in Asia/Taipei */
+function formatDate(d: Date): string {
+    const shifted = new Date(d.getTime() + 8 * 3600000);
+    return `${shifted.getUTCFullYear()}/${String(shifted.getUTCMonth() + 1).padStart(2, '0')}/${String(shifted.getUTCDate()).padStart(2, '0')}`;
+}
+
+/** Format a Date to full datetime string */
+function formatDateTime(d: Date): string {
+    return `${formatDate(d)} ${formatTime(d)}`;
+}
+
+// ─── Bot Commands ───
 
 bot.start((ctx) => {
     ctx.reply('歡迎使用 Focus Timer Bot！請選擇功能：',
@@ -23,6 +42,7 @@ bot.start((ctx) => {
 
 bot.hears('📅 查詢今日空檔', async (ctx) => {
     try {
+        await ctx.reply('⏳ 正在查詢...');
         const now = new Date();
         const slots = await calendarManager.getFreeSlots(now);
 
@@ -30,71 +50,76 @@ bot.hears('📅 查詢今日空檔', async (ctx) => {
             return ctx.reply('今日已無空檔。');
         }
 
-        // Create inline keyboard buttons for each slot
-        const buttons = slots.map(slot => {
-            const startStr = slot.start.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
-            const endStr = slot.end.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
-            // Store minimal data in callback_data: type:startTimeISO
-            // To fit 64 bytes, we might need to be concise. 
-            // format: book:timestamp
-            return Markup.button.callback(
-                `${startStr} - ${endStr}`,
+        const buttons = slots.map(slot =>
+            Markup.button.callback(
+                `${formatTime(slot.start)} - ${formatTime(slot.end)}`,
                 `book:${slot.start.getTime()}`
-            );
-        });
+            )
+        );
 
-        // Split into chunks of 2 for better layout
+        // 2 buttons per row
         const keyboard = [];
         for (let i = 0; i < buttons.length; i += 2) {
             keyboard.push(buttons.slice(i, i + 2));
         }
 
-        ctx.reply(`今日 (${now.toLocaleDateString()}) 可用時段 (點擊預約):`,
+        ctx.reply(
+            `📅 ${formatDate(now)} 可用時段：\n點擊即可預約 (每段 1 小時)`,
             Markup.inlineKeyboard(keyboard)
         );
     } catch (error) {
-        console.error(error);
-        ctx.reply('查詢失敗，請稍後再試。');
+        console.error('getFreeSlots error:', error);
+        ctx.reply('❌ 查詢失敗，請稍後再試。');
     }
 });
 
 bot.action(/book:(.+)/, async (ctx) => {
-    // Telegraf types for action might need casting or specific type usage if strict
-    // but usually with Regex it infers match.
-    // If ctx.match is issue, we can assume it works in runtime or cast it.
-    // Let's use 'any' cast for safety if types are strict, or rely on inference.
-    // In recent Telegraf, ctx.match is available on matched context.
     const match = ctx.match as RegExpExecArray;
     const timestamp = parseInt(match[1]);
+    if (isNaN(timestamp)) {
+        return ctx.reply('❌ 無效的時段。');
+    }
+
     const startTime = new Date(timestamp);
-    const endTime = new Date(timestamp + 60 * 60 * 1000); // Assume 1 hour for now
+    const endTime = new Date(timestamp + 60 * 60 * 1000);
 
     try {
-        // Double check availability (optional but recommended)
-        // For now, proceed to book
+        await ctx.answerCbQuery('⏳ 預約中...');
+
         const event = await calendarManager.createEvent({
             summary: `Focus Session (${ctx.from?.first_name || 'User'})`,
-            description: `Booked via Telegram by ID: ${ctx.from?.id}`,
-            startTime: startTime,
-            endTime: endTime
+            description: `Booked via Telegram by @${ctx.from?.username || ctx.from?.id}`,
+            startTime,
+            endTime,
         });
 
-        await ctx.reply(`✅ 預約成功！\n時間：${startTime.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}\n連結：${event.htmlLink}`);
-        // Optionally edit the original message to remove buttons or mark as booked
-        // await ctx.editMessageText(`✅ 已預約: ${startTime.toLocaleString('zh-TW')}`, undefined);
+        // Edit the original message to show confirmation
+        await ctx.editMessageText(
+            `✅ 預約成功！\n` +
+            `🕐 ${formatDateTime(startTime)} - ${formatTime(endTime)}\n` +
+            `🔗 ${event.htmlLink || '(no link)'}`
+        );
     } catch (error) {
-        console.error(error);
+        console.error('createEvent error:', error);
+        await ctx.answerCbQuery('❌ 預約失敗');
         await ctx.reply('❌ 預約失敗，請重試。');
     }
 });
 
 bot.hears('📝 管理我的預約', async (ctx) => {
-    // This would require listing events filtered by user. 
-    // Since we don't store user mapping yet, we can skip or show a placeholder.
-    ctx.reply('此功能尚未實作 (需資料庫支援)。');
+    ctx.reply('此功能開發中 🚧');
 });
 
-bot.help((ctx) => ctx.reply('Send /start to restart.'));
+bot.help((ctx) => ctx.reply(
+    '📖 使用說明：\n' +
+    '/start - 顯示主選單\n' +
+    '📅 查詢今日空檔 - 查看可預約時段\n' +
+    '📝 管理我的預約 - (開發中)'
+));
 
+// Catch unhandled errors
+bot.catch((err, ctx) => {
+    console.error(`Bot error for ${ctx.updateType}:`, err);
+});
 
 export default bot;

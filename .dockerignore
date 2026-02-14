@@ -1,0 +1,11 @@
+node_modules
+dist
+.env
+.env.example
+service-account.json
+.git
+.gitignore
+*.md
+deploy.ps1
+setup.ps1
+cloudbuild.yaml
