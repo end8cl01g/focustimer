@@ -34,7 +34,7 @@
 ```
 
 ## 已實作功能
-1. **查詢今日空檔** — 透過 GAS 檢查 09:00-18:00 之間的 1 小時空檔，以 Inline Keyboard 呈現。
+1. **查詢今日日曆** — 透過 GAS 獲取今日的所有行程，並列出時間與標題。
 2. **一鍵預約** — 點擊 Inline Button 即可將 Focus Session 寫入 Google 日曆。
 3. **雙模式運行** — `NODE_ENV=development` 使用 Polling，`production` 使用 Webhook 並自動註冊。
 4. **自動喚醒 (Keep-warm)** — 在 SIGTERM 接收時嘗試自我請求以維持啟動狀態（實驗性）。
