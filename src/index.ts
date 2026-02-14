@@ -1,16 +1,31 @@
 import express from 'express';
-import bot from './bot';
+import bot, { calendarManager } from './bot';
 import * as dotenv from 'dotenv';
 
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 8080;
-const SERVICE_URL = process.env.SERVICE_URL;
+app.use(express.static('public'));
 
 // Health check
-app.get('/', (_req, res) => {
+app.get('/health', (_req, res) => {
     res.json({ status: 'ok', mode: process.env.NODE_ENV || 'development' });
+});
+
+// API for Mini App
+app.get('/api/tasks', async (_req, res) => {
+    try {
+        const now = new Date();
+        const taipeiNow = new Date(now.getTime() + 8 * 3600000);
+        const startOfDay = new Date(Date.UTC(taipeiNow.getUTCFullYear(), taipeiNow.getUTCMonth(), taipeiNow.getUTCDate(), -8, 0, 0));
+        const endOfDay = new Date(Date.UTC(taipeiNow.getUTCFullYear(), taipeiNow.getUTCMonth(), taipeiNow.getUTCDate(), 15, 59, 59, 999));
+
+        const events = await calendarManager.listEvents(startOfDay, endOfDay);
+        res.json(events);
+    } catch (error) {
+        console.error('API /api/tasks error:', error);
+        res.status(500).json({ error: 'Failed to fetch tasks' });
+    }
 });
 
 const secretPath = `/webhook/${process.env.TELEGRAM_BOT_TOKEN}`;
@@ -19,8 +34,8 @@ if (process.env.NODE_ENV === 'production') {
     app.use(bot.webhookCallback(secretPath));
 
     // Auto-register webhook on startup
-    if (SERVICE_URL) {
-        const webhookUrl = `${SERVICE_URL}${secretPath}`;
+    if (process.env.SERVICE_URL) {
+        const webhookUrl = `${process.env.SERVICE_URL}${secretPath}`;
         bot.telegram.setWebhook(webhookUrl)
             .then(() => console.log(`✅ Webhook registered: ${webhookUrl}`))
             .catch((err) => console.error('❌ Webhook registration failed:', err));
@@ -37,6 +52,7 @@ if (process.env.NODE_ENV === 'production') {
         .catch((err) => console.error('Failed to delete webhook:', err));
 }
 
+const port = process.env.PORT || 8080;
 const server = app.listen(port, () => {
     console.log(`🚀 Server running on port ${port}`);
 });
@@ -45,9 +61,9 @@ const server = app.listen(port, () => {
 process.on('SIGTERM', async () => {
     console.log('SIGTERM received. Starting keep-warm ping...');
 
-    if (SERVICE_URL) {
+    if (process.env.SERVICE_URL) {
         try {
-            const res = await fetch(SERVICE_URL, {
+            const res = await fetch(process.env.SERVICE_URL, {
                 signal: AbortSignal.timeout(5000),
             });
             console.log(`Keep-warm ping → ${res.status}`);

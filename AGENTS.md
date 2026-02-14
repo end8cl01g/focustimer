@@ -17,6 +17,8 @@
 
 ## 專案結構
 ```
+├── public/
+│   └── index.html      # 專注定時器 Mini App 網頁
 ├── src/
 │   ├── index.ts          # Express Server 進入點 (Webhook / Polling 雙模式)
 │   ├── bot.ts            # Telegraf Bot 邏輯 (Inline Keyboards 預約流程)
@@ -38,6 +40,7 @@
 2. **核心預約邏輯** (✅) — `CalendarManager` 已實作 `createEvent` 與 `getFreeSlots`，並與 GAS 對接。
 3. **雙模式運行** (✅) — `NODE_ENV=development` 使用 Polling，`production` 使用 Webhook 並自動註冊。
 4. **自動喚醒 (Keep-warm)** (✅) — 接收 SIGTERM 時嘗試自我請求，並在 `index.ts` 中實作健康檢查路徑。
+5. **專注定時器 Mini App** (✅) — 提供 HTML5 網頁版定時器，支援每個行程獨立計時與完成回報。
 
 ## 待實作與優化功能
 - [ ] **預約 UI 流程整合** — 目前 `bot.ts` 中 `📝 管理我的預約` 為佔位符，需整合 `getFreeSlots` 顯示可預約時段。

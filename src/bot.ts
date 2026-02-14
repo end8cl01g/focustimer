@@ -1,10 +1,11 @@
 import { Telegraf, Markup } from 'telegraf';
+import { message } from 'telegraf/filters';
 import { CalendarManager } from './calendar';
 import * as dotenv from 'dotenv';
 dotenv.config();
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
-const calendarManager = new CalendarManager();
+export const calendarManager = new CalendarManager();
 
 // ─── Helpers ───
 
@@ -28,8 +29,10 @@ function formatDateTime(d: Date): string {
 // ─── Bot Commands ───
 
 bot.start((ctx) => {
+    const webAppUrl = process.env.SERVICE_URL || '';
     ctx.reply('歡迎使用 Focus Timer Bot！請選擇功能：',
         Markup.keyboard([
+            [Markup.button.webApp('🚀 開啟專注定時器', webAppUrl)],
             ['📅 查詢今日日曆', '📝 管理我的預約']
         ]).resize()
     );
@@ -52,26 +55,42 @@ bot.hears('📅 查詢今日日曆', async (ctx) => {
             return ctx.reply(`📅 ${formatDate(now)} 今日尚無行程。`);
         }
 
-        let message = `📅 ${formatDate(now)} 今日行程：\n\n`;
+        let messageText = `📅 ${formatDate(now)} 今日行程：\n\n`;
         events.forEach(event => {
-            message += `📍 ${formatTime(event.start)} - ${formatTime(event.end)}\n`;
-            message += `📝 ${event.title}\n`;
+            messageText += `📍 ${formatTime(event.start)} - ${formatTime(event.end)}\n`;
+            messageText += `📝 ${event.title}\n`;
             if (event.description) {
                 // Truncate description if too long
                 const desc = event.description.length > 50 ? event.description.substring(0, 47) + '...' : event.description;
-                message += `💬 ${desc}\n`;
+                messageText += `💬 ${desc}\n`;
             }
-            message += `\n`;
+            messageText += `\n`;
         });
 
-        ctx.reply(message);
+        ctx.reply(messageText);
     } catch (error) {
         console.error('listEvents error:', error);
         ctx.reply('❌ 查詢失敗，請稍後再試。');
     }
 });
 
-// We keep the booking action handler in case it's used by other parts of the bot later
+// Handle data from Mini App
+bot.on(message('web_app_data'), async (ctx) => {
+    try {
+        const data = JSON.parse(ctx.message.web_app_data.data);
+        if (data.action === 'complete_task') {
+            const minutes = Math.floor(data.duration / 60);
+            const seconds = data.duration % 60;
+            const timeStr = minutes > 0 ? `${minutes} 分 ${seconds} 秒` : `${seconds} 秒`;
+
+            await ctx.reply(`✅ 任務完成！\n\n📝 任務：${data.title}\n⏱️ 耗時：${timeStr}\n\n太棒了！繼續加油！🚀`);
+        }
+    } catch (error) {
+        console.error('web_app_data error:', error);
+        ctx.reply('❌ 處理任務數據時出錯。');
+    }
+});
+
 bot.action(/book:(.+)/, async (ctx) => {
     const match = ctx.match as RegExpExecArray;
     const timestamp = parseInt(match[1]);
@@ -112,6 +131,7 @@ bot.hears('📝 管理我的預約', async (ctx) => {
 bot.help((ctx) => ctx.reply(
     '📖 使用說明：\n' +
     '/start - 顯示主選單\n' +
+    '🚀 開啟專注定時器 - 開啟網頁版定時器\n' +
     '📅 查詢今日日曆 - 查看今日行程\n' +
     '📝 管理我的預約 - (開發中)'
 ));
