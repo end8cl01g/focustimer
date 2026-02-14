@@ -48,6 +48,6 @@ gcloud run deploy focustimer-bot `
     --region asia-east1 `
     --platform managed `
     --allow-unauthenticated `
-    --set-env-vars NODE_ENV="production", TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN", GOOGLE_CREDENTIALS_JSON="$CredsJson", GOOGLE_CALENDAR_ID="$GOOGLE_CALENDAR_ID"
+    --set-env-vars NODE_ENV="production",TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN",GOOGLE_CREDENTIALS_JSON="$CredsJson",GOOGLE_CALENDAR_ID="$GOOGLE_CALENDAR_ID",GAS_WEBAPP_URL="$GAS_WEBAPP_URL",GAS_API_KEY="$GAS_API_KEY"
 
 Write-Host "Deployment Complete!"

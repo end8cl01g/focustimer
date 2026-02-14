@@ -6,7 +6,7 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 8080;
-const SERVICE_URL = process.env.SERVICE_URL;
+const GAS_WEBAPP_URL = process.env.GAS_WEBAPP_URL;
 
 // Health check
 app.get('/', (_req, res) => {
@@ -17,16 +17,7 @@ const secretPath = `/webhook/${process.env.TELEGRAM_BOT_TOKEN}`;
 
 if (process.env.NODE_ENV === 'production') {
     app.use(bot.webhookCallback(secretPath));
-
-    // Auto-register webhook on startup
-    if (SERVICE_URL) {
-        const webhookUrl = `${SERVICE_URL}${secretPath}`;
-        bot.telegram.setWebhook(webhookUrl)
-            .then(() => console.log(`✅ Webhook registered: ${webhookUrl}`))
-            .catch((err) => console.error('❌ Webhook registration failed:', err));
-    } else {
-        console.warn('⚠️ SERVICE_URL not set — webhook not auto-registered');
-    }
+    console.log('🚀 Bot starting in webhook mode');
 } else {
     // Local dev: polling mode. Delete any existing webhook first.
     bot.telegram.deleteWebhook()
@@ -43,11 +34,10 @@ const server = app.listen(port, () => {
 
 // ─── SIGTERM Keep-Warm Loop ───
 process.on('SIGTERM', async () => {
-    console.log('SIGTERM received. Starting keep-warm ping...');
-
-    if (SERVICE_URL) {
+    if (GAS_WEBAPP_URL) {
+        console.log('SIGTERM received. Pinging GAS Bridge to keep warm...');
         try {
-            const res = await fetch(SERVICE_URL, {
+            const res = await fetch(GAS_WEBAPP_URL, {
                 signal: AbortSignal.timeout(5000),
             });
             console.log(`Keep-warm ping → ${res.status}`);

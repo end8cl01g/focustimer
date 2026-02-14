@@ -36,8 +36,8 @@
 ## 已實作功能
 1. **查詢今日日曆** — 透過 GAS 獲取今日的所有行程，並列出時間與標題。
 2. **一鍵預約** — 點擊 Inline Button 即可將 Focus Session 寫入 Google 日曆。
-3. **雙模式運行** — `NODE_ENV=development` 使用 Polling，`production` 使用 Webhook 並自動註冊。
-4. **自動喚醒 (Keep-warm)** — 在 SIGTERM 接收時嘗試自我請求以維持啟動狀態（實驗性）。
+3. **雙模式運行** — `NODE_ENV=development` 使用 Polling，`production` 使用 Webhook。
+4. **自動喚醒 (Keep-warm)** — 在 SIGTERM 接收時嘗試請求 GAS Bridge 以維持啟動狀態（實驗性）。
 
 ## 待實作功能
 - [ ] 使用者白名單控管
@@ -52,7 +52,6 @@
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot Token (from @BotFather) |
 | `GAS_WEBAPP_URL` | 部署後的 GAS Web App URL |
 | `GAS_API_KEY` | 與 GAS Bridge 通訊的密鑰 (需與 `gas_bridge.js` 一致) |
-| `SERVICE_URL` | Cloud Run 部署後的網址 (Webhook 註冊用) |
 | `PORT` | 伺服器埠號 (預設 `8080`) |
 | `NODE_ENV` | `development` (Polling) / `production` (Webhook) |
 
@@ -68,8 +67,9 @@
 
 ### 2. 部署 Telegram Bot
 1. 執行 `.\setup.ps1` 初始化 GCP 資源。
-2. 編輯 `.env` 填入 Token、GAS URL 與 `SERVICE_URL`。
+2. 編輯 `.env` 填入 Token、GAS URL 等環境變數。
 3. 執行 `.\deploy.ps1` 一鍵建構與部署至 Cloud Run。
+4. **注意**：部署後需手動註冊 Telegram Webhook (因為已移除自動註冊功能)。
 
 ## 注意事項
 - **時區**: 預設 `Asia/Taipei`。
