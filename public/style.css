@@ -646,3 +646,33 @@
         .btn-sheet:active {
             transform: scale(0.98);
         }
+
+        .item-content-wrapper {
+            flex: 1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-right: 12px;
+        }
+
+        .btn-delete-event {
+            background: rgba(255, 69, 58, 0.15);
+            color: #ff453a;
+            border: none;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 18px;
+            transition: all 0.2s;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .btn-delete-event:active {
+            transform: scale(0.9);
+            background: rgba(255, 69, 58, 0.3);
+        }

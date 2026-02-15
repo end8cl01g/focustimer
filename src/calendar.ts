@@ -101,4 +101,8 @@ export class CalendarManager {
             endTime: details.endTime.toISOString(),
         });
     }
+
+    async deleteEvent(eventId: string): Promise<{ success: boolean }> {
+        return gasCall<{ success: boolean }>('deleteEvent', { eventId });
+    }
 }

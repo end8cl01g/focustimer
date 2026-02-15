@@ -61,6 +61,19 @@ async function startServer() {
         }
     });
 
+    // API: Delete Event
+    app.delete('/api/events/:id', async (req, res) => {
+        try {
+            const { id } = req.params;
+            await calendarManager.deleteEvent(id);
+            invalidateEventCache();
+            res.json({ ok: true });
+        } catch (error) {
+            console.error('API DELETE /api/events error:', error);
+            res.status(500).json({ error: 'Failed to delete event', details: (error as Error).message });
+        }
+    });
+
     // API: Timer State
     app.get('/api/timer-state', (_req, res) => {
         let state = readTimerState();

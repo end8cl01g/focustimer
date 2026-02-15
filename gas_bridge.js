@@ -29,6 +29,8 @@ function doPost(e) {
                 return jsonResponse(handleCreateEvent(body));
             case 'listEvents':
                 return jsonResponse(handleListEvents(body));
+            case 'deleteEvent':
+                return jsonResponse(handleDeleteEvent(body));
             default:
                 return jsonResponse({ error: `Unknown action: "${action}"` }, 400);
         }
@@ -139,6 +141,23 @@ function handleListEvents(body) {
         })),
         count: events.length,
     };
+}
+
+function handleDeleteEvent(body) {
+    const { eventId } = body;
+    if (!eventId) {
+        throw new Error('Missing required field: eventId');
+    }
+
+    const cal = CalendarApp.getCalendarById(CALENDAR_ID);
+    const event = cal.getEventById(eventId);
+
+    if (!event) {
+        return { error: 'NOT_FOUND', message: '找不到該行程' };
+    }
+
+    event.deleteEvent();
+    return { success: true, id: eventId };
 }
 
 // ─── Utilities ───
