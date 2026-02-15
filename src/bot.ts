@@ -39,7 +39,7 @@ bot.start((ctx) => {
 });
 
 bot.hears('📅 查詢今日空檔', (ctx) => ctx.reply('此功能已更新，請重新輸入 /start 以更新選單，或點擊「📅 查詢今日日曆」。'));
-bot.hears('📅 查詢今日日曆', async (ctx) => {
+bot.hears(/📅\s*查詢今日日曆/, async (ctx) => {
     try {
         await ctx.reply('⏳ 正在查詢...');
         const now = new Date();
@@ -70,7 +70,7 @@ bot.hears('📅 查詢今日日曆', async (ctx) => {
         ctx.reply(messageText);
     } catch (error) {
         console.error('listEvents error:', error);
-        ctx.reply('❌ 查詢失敗，請稍後再試。');
+        ctx.reply(`❌ 查詢失敗，請稍後再試。錯誤：${error instanceof Error ? error.stack : String(error)}`);
     }
 });
 
@@ -135,6 +135,8 @@ bot.help((ctx) => ctx.reply(
     '📅 查詢今日日曆 - 查看今日行程\n' +
     '📝 管理我的預約 - (開發中)'
 ));
+
+
 
 // Catch unhandled errors
 bot.catch((err, ctx) => {

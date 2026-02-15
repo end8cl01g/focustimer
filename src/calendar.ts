@@ -31,6 +31,8 @@ async function gasCall<T>(action: string, body: Record<string, unknown>): Promis
 
     const payload = { ...body, action, apiKey: GAS_API_KEY };
 
+    console.log('Sending to GAS:', gasUrl.toString(), payload);
+
     const response = await fetch(gasUrl.toString(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
