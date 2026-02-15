@@ -23,7 +23,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 try:
-    from huggingface_hub import HfApi, hf_hub_download, HfFolder
+    from huggingface_hub import HfApi, hf_hub_download
     import yaml
     import requests
     from dotenv import load_dotenv
@@ -41,7 +41,7 @@ class PaperManager:
 
     def __init__(self, hf_token: Optional[str] = None):
         """Initialize Paper Manager with HF token."""
-        self.token = hf_token or os.getenv("HF_TOKEN") or HfFolder.get_token()
+        self.token = hf_token or os.getenv("HF_TOKEN")
         if not self.token:
             print("Warning: No HF_TOKEN found. Some operations will fail.")
         self.api = HfApi(token=self.token)
