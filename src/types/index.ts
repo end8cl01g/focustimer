@@ -17,3 +17,13 @@ export interface CalendarEvent {
     end: Date;
     description?: string;
 }
+
+export interface TimerState {
+    activeTaskId: string | null;
+    timers: Record<string, {
+        seconds: number;
+        isRunning: boolean;
+        autoStarted?: boolean;
+    }>;
+    lastTick: number;
+}

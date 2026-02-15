@@ -1,20 +1,5 @@
 /**
  * Focus Timer Bot — Google Apps Script Calendar Bridge
- * 
- * Deploy as Web App:
- *   1. Open https://script.google.com → New Project
- *   2. Paste this entire file
- *   3. Deploy → New Deployment → Web App
- *      - Execute as: Me
- *      - Who has access: Anyone
- *   4. Copy the URL → set as GAS_WEBAPP_URL in .env
- *
- * Endpoints (all POST with JSON body):
- *   ?action=getFreeSlots  { date: "YYYY-MM-DD" }
- *   ?action=createEvent   { summary, description, startTime, endTime }
- *   ?action=listEvents    { timeMin, timeMax }
- *
- * Security: Set API_KEY below and pass it in the request header or body.
  */
 
 // ─── Config ───
@@ -80,7 +65,6 @@ function handleGetFreeSlots(body) {
         const slotStart = new Date(cursor);
         const slotEnd = new Date(cursor + slotMs);
 
-        // Skip past slots
         if (slotEnd.getTime() <= now.getTime()) {
             cursor += slotMs;
             continue;
@@ -99,10 +83,8 @@ function handleGetFreeSlots(body) {
                 startTimestamp: slotStart.getTime(),
             });
         }
-
         cursor += slotMs;
     }
-
     return { slots, date: dateStr, count: slots.length };
 }
 
@@ -116,6 +98,16 @@ function handleCreateEvent(body) {
     const start = new Date(startTime);
     const end = new Date(endTime);
 
+    // Conflict Check
+    const conflicts = cal.getEvents(start, end);
+    if (conflicts.length > 0) {
+        return {
+            error: 'CONFLICT',
+            message: '時段與現有行程衝突',
+            conflicts: conflicts.map(c => c.getTitle())
+        };
+    }
+
     const event = cal.createEvent(summary, start, end, {
         description: description || '',
     });
@@ -125,7 +117,6 @@ function handleCreateEvent(body) {
         title: event.getTitle(),
         start: start.toISOString(),
         end: end.toISOString(),
-        htmlLink: `https://calendar.google.com/calendar/event?eid=${Utilities.base64Encode(event.getId() + ' ' + CALENDAR_ID)}`,
     };
 }
 
