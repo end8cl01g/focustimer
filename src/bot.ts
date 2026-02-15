@@ -4,8 +4,33 @@ import { CalendarManager } from './calendar';
 import * as dotenv from 'dotenv';
 dotenv.config();
 
+import * as fs from 'fs';
+import * as path from 'path';
+
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
 export const calendarManager = new CalendarManager();
+
+// Persistence for Chat ID
+const CHAT_ID_FILE = path.join(__dirname, '../data/chat_id.json');
+
+export function getSavedChatId(): string | null {
+    try {
+        if (fs.existsSync(CHAT_ID_FILE)) {
+            const data = JSON.parse(fs.readFileSync(CHAT_ID_FILE, 'utf-8'));
+            return data.chatId;
+        }
+    } catch (e) { console.error('Error reading chat_id.json', e); }
+    return null;
+}
+
+function saveChatId(chatId: string) {
+    try {
+        const dir = path.dirname(CHAT_ID_FILE);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(CHAT_ID_FILE, JSON.stringify({ chatId }));
+        console.log(`Saved Chat ID: ${chatId}`);
+    } catch (e) { console.error('Error saving chat_id.json', e); }
+}
 
 // ─── Helpers ───
 
@@ -29,6 +54,9 @@ function formatDateTime(d: Date): string {
 // ─── Bot Commands ───
 
 bot.start((ctx) => {
+    // Save Chat ID
+    if (ctx.chat) saveChatId(String(ctx.chat.id));
+
     const webAppUrl = process.env.SERVICE_URL || '';
     ctx.reply('歡迎使用 Focus Timer Bot！請選擇功能：',
         Markup.keyboard([

@@ -45,7 +45,7 @@ function doPost(e) {
             case 'listEvents':
                 return jsonResponse(handleListEvents(body));
             default:
-                return jsonResponse({ error: `Unknown action: ${action}` }, 400);
+                return jsonResponse({ error: `Unknown action: "${action}"` }, 400);
         }
     } catch (err) {
         return jsonResponse({ error: err.message }, 500);
@@ -64,7 +64,7 @@ function doGet(e) {
 
 function handleGetFreeSlots(body) {
     const dateStr = body.date; // "YYYY-MM-DD"
-    if (!dateStr) throw new Error('Missing "date" parameter');
+    if (!dateStr) throw new Error(`Missing "date" parameter for action "getFreeSlots"`);
 
     const startOfDay = new Date(`${dateStr}T${pad(WORK_START)}:00:00`);
     const endOfDay = new Date(`${dateStr}T${pad(WORK_END)}:00:00`);

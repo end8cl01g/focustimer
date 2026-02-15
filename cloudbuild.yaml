@@ -22,7 +22,7 @@ steps:
       - 'managed'
       - '--allow-unauthenticated'
       - '--update-env-vars'
-      - 'NODE_ENV=production'
+      - 'NODE_ENV=production,TELEGRAM_BOT_TOKEN=8062500665:AAGNnpnBMHhwZnrPIM6xz53ayrAnsMNJ40w,SERVICE_URL=https://focustimer-bot-120951296419.asia-east1.run.app,GAS_WEBAPP_URL=https://script.google.com/macros/s/AKfycbxhvm4GT6tQLd0FapET5Z7HriYCQAvSopVFmo5S_yH6Hz9jtHmUqh8D5qgS0IlosV0y/exec'
 
 images:
   - 'gcr.io/$PROJECT_ID/focustimer-bot'
