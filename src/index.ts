@@ -3,6 +3,7 @@ import express from 'express';
 import * as dotenv from 'dotenv';
 import { loadSecrets } from "./secrets";
 import { readTimerState, writeTimerState, catchUpTimerState } from './timerState';
+import { getTaipeiStartOfDay, getTaipeiEndOfDay } from './utils';
 
 dotenv.config();
 
@@ -28,10 +29,8 @@ async function startServer() {
     // API: Tasks
     app.get('/api/tasks', async (_req, res) => {
         try {
-            const now = new Date();
-            const taipeiNow = new Date(now.getTime() + 8 * 3600000);
-            const startOfDay = new Date(Date.UTC(taipeiNow.getUTCFullYear(), taipeiNow.getUTCMonth(), taipeiNow.getUTCDate(), -8, 0, 0));
-            const endOfDay = new Date(Date.UTC(taipeiNow.getUTCFullYear(), taipeiNow.getUTCMonth(), taipeiNow.getUTCDate(), 15, 59, 59, 999));
+            const startOfDay = getTaipeiStartOfDay();
+            const endOfDay = getTaipeiEndOfDay();
 
             const events = await calendarManager.listEvents(startOfDay, endOfDay);
             res.json(events);
