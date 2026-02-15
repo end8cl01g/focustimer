@@ -5,23 +5,28 @@
 ## 技術棧
 - **後端語言**: Node.js (TypeScript)
 - **框架**:
-  - `Express` — 處理 Telegram Webhook HTTP 請求
+  - `Express` — 處理 Telegram Webhook HTTP 請求 & Mini App API
   - `Telegraf` — Telegram Bot 框架
 - **日曆串接**:
   - **Google Apps Script (GAS)** — 作為中間橋樑 (Bridge)，簡化 OAuth2 流程並調用 Google Calendar API
   - `fetch` (Node.js built-in) — 用於與 GAS Web App 通訊
+- **前端 (Mini App)**:
+  - HTML5 / Vanilla CSS / JavaScript
+  - Tailwind-like Utility Classes (自定義)
+  - Glassmorphism UI Design
 - **基礎設施**:
   - **Google Cloud Run** — 託管後端服務
   - **Google Cloud Build** — CI/CD 自動化建構與推送映像
   - **Artifact Registry** — 儲存 Docker 映像
+  - **File Persistence** — 使用 `data/chat_id.json` 儲存 Chat ID 以支援主動推播
 
 ## 專案結構
 ```
 ├── public/
-│   └── index.html      # 專注定時器 Mini App 網頁
+│   └── index.html      # 專注定時器 Mini App 網頁 (含 Action Sheet, Modal, Subtasks)
 ├── src/
-│   ├── index.ts          # Express Server 進入點 (Webhook / Polling 雙模式)
-│   ├── bot.ts            # Telegraf Bot 邏輯 (Inline Keyboards 預約流程)
+│   ├── index.ts          # Express Server 進入點 (Webhook / Polling / Notification Loop)
+│   ├── bot.ts            # Telegraf Bot 邏輯 & Chat ID Persistence
 │   ├── calendar.ts       # 透過 GAS Bridge 與日曆互動 (查詢/預約)
 │   └── types/
 │       └── index.ts      # TypeScript 型別定義
@@ -35,17 +40,27 @@
 ```
 
 ## 已實作功能
-1. **查詢今日日曆** (✅) — 透過 GAS 獲取今日的所有行程，並列出時間、標題與描述。
-2. **核心預約邏輯** (✅) — `CalendarManager` 已實作 `createEvent` 與 `getFreeSlots`，並與 GAS 對接。
-3. **雙模式運行** (✅) — `NODE_ENV=development` 使用 Polling，`production` 使用 Webhook 並自動註冊。
-4. **自動喚醒 (Keep-warm)** (✅) — 接收 SIGTERM 時嘗試自我請求，並在 `index.ts` 中實作健康檢查路徑。
-5. **專注定時器 Mini App** (✅) — 提供 HTML5 網頁版定時器，支援每個行程獨立計時與完成回報。
+1.  **核心日曆功能** (✅)
+    -   **查詢今日日曆** — 透過 GAS 獲取今日的所有行程。
+    -   **預約行程** — 透過 Mini App 介面直接預約 Google Calendar。
+2.  **專注定時器 Mini App** (✅)
+    -   **倒數/正計時** — 支援每個行程獨立計時。
+    -   **子任務 (Subtasks)** — 每個專注時段可建立獨立的待辦清單。
+    -   **隱藏已完成** — 自動過濾當日已完成的任務。
+    -   **視覺優化** — Mobile-first 設計，支援深色模式與毛玻璃特效。
+3.  **進階會話管理** (✅)
+    -   **續約 (Renew Session)** — 針對過期任務，支援「立即開始」或「自訂時間」續約。
+    -   **預約修復** — 強化「Book」按鈕的穩定性與錯誤提示。
+4.  **伺服器端通知** (✅)
+    -   **主動推播** — 後端每分鐘檢查行程，於任務開始時發送 Telegram 通知。
+    -   **持久化** — 自動儲存 Chat ID，確保重啟後仍能發送通知。
+5.  **不間斷運行** (✅)
+    -   **Keep-warm** — 接收 SIGTERM 時嘗試自我請求，防止冷啟動延遲。
+    -   **Webhook 自動註冊** — 部署時自動設定 Webhook URL。
 
 ## 待實作與優化功能
-- [ ] **預約 UI 流程整合** — 目前 `bot.ts` 中 `📝 管理我的預約` 為佔位符，需整合 `getFreeSlots` 顯示可預約時段。
-- [ ] **使用者白名單控管** — 目前任何知道 Bot 的人都能預約。
-- [ ] **自訂行程時長** — 目前預設為 1 小時。
-- [ ] **重複預約衝突檢查** — 雖然 GAS 有基本邏輯，但前端 UI 尚未處理。
+- [ ] **多使用者支援** — 目前 Chat ID 儲存為單一檔案，需改為資料庫或多檔案結構以支援多人使用。
+- [ ] **重複預約衝突檢查** — 前端 UI 尚未處理時段衝突。
 - [ ] **Secret Manager 整合** — 提升環境變數安全性。
 
 ## 環境變數
@@ -59,21 +74,7 @@
 | `NODE_ENV` | `development` (Polling) / `production` (Webhook) |
 
 ## 部署流程
-### 1. 部署 GAS Bridge
-1. 前往 [Google Apps Script](https://script.google.com/)。
-2. 建立新專案並貼入 `gas_bridge.js` 內容。
-3. 若需要，設定 `API_KEY` 常數（建議在 `doPost` 中檢查 `body.apiKey`）。
-4. 部署為 **Web App**：
-   - Execute as: **Me**
-   - Who has access: **Anyone**
-5. 複製產生的 Web App URL。
-
-### 2. 部署 Telegram Bot
-1. 執行 `.\setup.ps1` 初始化 GCP 資源。
-2. 編輯 `.env` 填入 Token、GAS URL 與 `SERVICE_URL`。
-3. 執行 `gcloud builds submit --config cloudbuild.yaml .` 進行部署，或透過 GitHub 連結自動觸發 Cloud Build。
-
-## 注意事項
-- **時區**: 程式碼中多處硬編碼為 `Asia/Taipei` (UTC+8)。
-- **GAS 限制**: Google 帳號對 Apps Script 每日調用有配額限制。
-- **安全性**: 務必設定 `GAS_API_KEY`。
+1.  **GAS Bridge**: 部署 `gas_bridge.js` 為 Web App (Anyone acts as Me)。
+2.  **GCP Resources**: 執行 `.\setup.ps1` 初始化。
+3.  **Deploy**: 執行 `gcloud builds submit --config cloudbuild.yaml .`。
+4.  **Start Bot**: 對 Bot 發送 `/start` 以啟用通知功能。
