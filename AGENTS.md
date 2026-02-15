@@ -40,6 +40,7 @@
 
 ## 部署與運行
 - **編譯**: `npm run build`
+- **依賴管理**: 使用 `npm install --legacy-peer-deps` 或 `npm ci --legacy-peer-deps` 以避免 ESLint 插件的版本衝突。
 - **運行**: `npm start`
 - **檢查**: `npm run lint`
 
