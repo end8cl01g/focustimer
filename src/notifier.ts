@@ -2,14 +2,16 @@ import { Telegraf } from 'telegraf';
 import { CalendarManager } from './calendar';
 import { getSavedChatId } from './bot';
 import { CalendarEvent } from './types';
+import { getTaipeiStartOfDay, getTaipeiEndOfDay, formatTime } from './utils';
 
 const notifiedEvents = new Set<string>();
 let eventCache: CalendarEvent[] = [];
 let lastFetchTime = 0;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-// Clear notified set daily
+// Clear notified set daily to prevent memory growth
 setInterval(() => {
+    console.log('Clearing notified events cache...');
     notifiedEvents.clear();
 }, 24 * 60 * 60 * 1000);
 
@@ -20,12 +22,12 @@ export async function fetchEvents(calendarManager: CalendarManager): Promise<Cal
     }
 
     try {
-        const taipeiNow = new Date(now + 8 * 3600000);
-        const startOfDay = new Date(Date.UTC(taipeiNow.getUTCFullYear(), taipeiNow.getUTCMonth(), taipeiNow.getUTCDate(), -8, 0, 0));
-        const endOfDay = new Date(Date.UTC(taipeiNow.getUTCFullYear(), taipeiNow.getUTCMonth(), taipeiNow.getUTCDate(), 15, 59, 59, 999));
+        const startOfDay = getTaipeiStartOfDay();
+        const endOfDay = getTaipeiEndOfDay();
 
         eventCache = await calendarManager.listEvents(startOfDay, endOfDay);
         lastFetchTime = now;
+        console.log(`Fetched ${eventCache.length} events for today.`);
         return eventCache;
     } catch (e) {
         console.error('Fetch events error:', e);
@@ -34,15 +36,19 @@ export async function fetchEvents(calendarManager: CalendarManager): Promise<Cal
 }
 
 /**
- * Force clear cache (e.g. after booking)
+ * Force clear cache (e.g. after booking or deletion)
  */
 export function invalidateEventCache() {
+    console.log('Invalidating event cache...');
     lastFetchTime = 0;
 }
 
 export async function checkUpcomingEvents(bot: Telegraf, calendarManager: CalendarManager) {
     const chatId = getSavedChatId();
-    if (!chatId) return;
+    if (!chatId) {
+        // No chat ID yet, user hasn't started the bot.
+        return;
+    }
 
     try {
         const events = await fetchEvents(calendarManager);
@@ -52,17 +58,14 @@ export async function checkUpcomingEvents(bot: Telegraf, calendarManager: Calend
             const start = new Date(event.start);
             const diff = start.getTime() - now.getTime();
 
+            // Notify if event starts in less than 90 seconds (1.5 min), and we haven't notified yet.
+            // We keep a 30s grace period for events that just started.
             if (diff <= 90000 && diff > -30000 && !notifiedEvents.has(event.id)) {
                 notifiedEvents.add(event.id);
-                const timeStr = start.toLocaleTimeString('en-US', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: false,
-                    timeZone: 'Asia/Taipei'
-                });
+                const timeStr = formatTime(start);
 
-                await bot.telegram.sendMessage(chatId, `🔔 <b>Task Starting:</b> ${event.title}\n⏰ ${timeStr}`, { parse_mode: 'HTML' });
-                console.log(`Notification sent for: ${event.title}`);
+                await bot.telegram.sendMessage(chatId, `🔔 <b>專注提醒：</b> ${event.title}\n⏰ ${timeStr}\n\n準備好進入心流狀態了嗎？🚀`, { parse_mode: 'HTML' });
+                console.log(`Notification sent for event "${event.title}" to chat ${chatId}`);
             }
         }
     } catch (e) {
@@ -71,6 +74,8 @@ export async function checkUpcomingEvents(bot: Telegraf, calendarManager: Calend
 }
 
 export function startNotificationLoop(bot: Telegraf, calendarManager: CalendarManager) {
-    console.log('Starting notification loop...');
+    console.log('Starting notification loop (interval: 60s)...');
+    // Run immediately once
+    checkUpcomingEvents(bot, calendarManager).catch(err => console.error('Initial check failed:', err));
     setInterval(() => checkUpcomingEvents(bot, calendarManager), 60000);
 }

@@ -1,14 +1,18 @@
 /**
  * Focus Timer Bot — Google Apps Script Calendar Bridge
+ *
+ * Depoloy as a Web App with:
+ * - Execute as: Me
+ * - Who has access: Anyone (we use API_KEY for auth)
  */
 
 // ─── Config ───
 const CALENDAR_ID = 'primary';
 const TIMEZONE = 'Asia/Taipei';
 const WORK_START = 9;  // 09:00
-const WORK_END = 18;   // 18:00
+const WORK_END = 22;   // 22:00 (Extended for late workers)
 const SLOT_DURATION_MIN = 60; // minutes
-const API_KEY = ''; // Set a secret key here, leave empty to disable auth
+const API_KEY = ''; // Set a secret key here to enable auth
 
 // ─── Entry Points ───
 
@@ -17,7 +21,7 @@ function doPost(e) {
         const body = JSON.parse(e.postData.contents || '{}');
         const action = e.parameter.action || body.action;
 
-        // Auth check
+        // Auth check (if API_KEY is set)
         if (API_KEY && body.apiKey !== API_KEY) {
             return jsonResponse({ error: 'Unauthorized' }, 401);
         }
@@ -35,6 +39,7 @@ function doPost(e) {
                 return jsonResponse({ error: `Unknown action: "${action}"` }, 400);
         }
     } catch (err) {
+        console.error('GAS Error:', err);
         return jsonResponse({ error: err.message }, 500);
     }
 }
@@ -42,7 +47,12 @@ function doPost(e) {
 function doGet(e) {
     const action = e.parameter.action;
     if (action === 'health') {
-        return jsonResponse({ status: 'ok', calendar: CALENDAR_ID });
+        const cal = CalendarApp.getCalendarById(CALENDAR_ID);
+        return jsonResponse({
+            status: 'ok',
+            calendar: cal ? cal.getName() : 'primary',
+            timezone: Session.getScriptTimeZone()
+        });
     }
     return jsonResponse({ error: 'Use POST for API calls. GET ?action=health for status.' }, 400);
 }
@@ -53,11 +63,13 @@ function handleGetFreeSlots(body) {
     const dateStr = body.date; // "YYYY-MM-DD"
     if (!dateStr) throw new Error(`Missing "date" parameter for action "getFreeSlots"`);
 
+    // Parse date in script timezone
     const startOfDay = new Date(`${dateStr}T${pad(WORK_START)}:00:00`);
     const endOfDay = new Date(`${dateStr}T${pad(WORK_END)}:00:00`);
     const now = new Date();
 
-    const events = CalendarApp.getCalendarById(CALENDAR_ID).getEvents(startOfDay, endOfDay);
+    const cal = CalendarApp.getCalendarById(CALENDAR_ID);
+    const events = cal.getEvents(startOfDay, endOfDay);
 
     const slots = [];
     const slotMs = SLOT_DURATION_MIN * 60 * 1000;
@@ -67,6 +79,7 @@ function handleGetFreeSlots(body) {
         const slotStart = new Date(cursor);
         const slotEnd = new Date(cursor + slotMs);
 
+        // Skip slots in the past
         if (slotEnd.getTime() <= now.getTime()) {
             cursor += slotMs;
             continue;
@@ -75,6 +88,7 @@ function handleGetFreeSlots(body) {
         const isBusy = events.some(ev => {
             const evStart = ev.getStartTime().getTime();
             const evEnd = ev.getEndTime().getTime();
+            // Overlap check: start1 < end2 AND end1 > start2
             return evStart < slotEnd.getTime() && evEnd > slotStart.getTime();
         });
 
@@ -111,7 +125,7 @@ function handleCreateEvent(body) {
     }
 
     const event = cal.createEvent(summary, start, end, {
-        description: description || '',
+        description: description || 'Created via Focus Timer Bot',
     });
 
     return {
@@ -153,7 +167,8 @@ function handleDeleteEvent(body) {
     const event = cal.getEventById(eventId);
 
     if (!event) {
-        return { error: 'NOT_FOUND', message: '找不到該行程' };
+        // Might be a recurring event instance or already deleted
+        return { error: 'NOT_FOUND', message: '找不到該行程，可能已被刪除' };
     }
 
     event.deleteEvent();
@@ -163,8 +178,9 @@ function handleDeleteEvent(body) {
 // ─── Utilities ───
 
 function jsonResponse(data, code) {
+    const output = JSON.stringify(data);
     return ContentService
-        .createTextOutput(JSON.stringify(data))
+        .createTextOutput(output)
         .setMimeType(ContentService.MimeType.JSON);
 }
 

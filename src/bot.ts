@@ -3,7 +3,7 @@ import { message } from 'telegraf/filters';
 import { CalendarManager } from './calendar';
 import * as fs from 'fs';
 import * as path from 'path';
-import { formatDateTime, formatTime, formatDate } from './utils';
+import { formatDateTime, formatTime, formatDate, getTaipeiStartOfDay, getTaipeiEndOfDay } from './utils';
 
 let bot: Telegraf;
 export const calendarManager = new CalendarManager();
@@ -54,18 +54,16 @@ export function initBot(): Telegraf {
     bot.hears(/📅\s*查詢今日日曆/, async (ctx) => {
         try {
             await ctx.reply('⏳ 正在查詢...');
-            const now = new Date();
-            const taipeiNow = new Date(now.getTime() + 8 * 3600000);
-            const startOfDay = new Date(Date.UTC(taipeiNow.getUTCFullYear(), taipeiNow.getUTCMonth(), taipeiNow.getUTCDate(), -8, 0, 0));
-            const endOfDay = new Date(Date.UTC(taipeiNow.getUTCFullYear(), taipeiNow.getUTCMonth(), taipeiNow.getUTCDate(), 15, 59, 59, 999));
+            const startOfDay = getTaipeiStartOfDay();
+            const endOfDay = getTaipeiEndOfDay();
 
             const events = await calendarManager.listEvents(startOfDay, endOfDay);
 
             if (events.length === 0) {
-                return ctx.reply(`📅 ${formatDate(now)} 今日尚無行程。`);
+                return ctx.reply(`📅 ${formatDate(new Date())} 今日尚無行程。`);
             }
 
-            let messageText = `📅 ${formatDate(now)} 今日行程：\n\n`;
+            let messageText = `📅 ${formatDate(new Date())} 今日行程：\n\n`;
             events.forEach(event => {
                 messageText += `📍 ${formatTime(event.start)} - ${formatTime(event.end)}\n`;
                 messageText += `📝 ${event.title}\n`;
@@ -93,40 +91,6 @@ export function initBot(): Telegraf {
             }
         } catch (error) {
             console.error('web_app_data error:', error);
-        }
-    });
-
-    bot.action(/book:(.+)/, async (ctx) => {
-        const match = ctx.match as RegExpExecArray;
-        const timestamp = parseInt(match[1]);
-        if (isNaN(timestamp)) return ctx.reply('❌ 無效的時段。');
-
-        const startTime = new Date(timestamp);
-        const endTime = new Date(timestamp + 60 * 60 * 1000);
-
-        try {
-            await ctx.answerCbQuery('⏳ 預約中...');
-            const event = await calendarManager.createEvent({
-                summary: `Focus Session (${ctx.from?.first_name || 'User'})`,
-                description: `Booked via Telegram by @${ctx.from?.username || ctx.from?.id}`,
-                startTime,
-                endTime,
-            });
-
-            try {
-                const { invalidateEventCache } = await import('./notifier');
-                invalidateEventCache();
-            } catch (e) { console.error('Failed to invalidate cache:', e); }
-
-            await ctx.editMessageText(
-                `✅ 預約成功！\n` +
-                `🕐 ${formatDateTime(startTime)} - ${formatTime(endTime)}\n` +
-                (event.htmlLink ? `🔗 ${event.htmlLink}` : `📌 ${event.title || event.id}`)
-            );
-        } catch (error) {
-            console.error('createEvent error:', error);
-            await ctx.answerCbQuery('❌ 預約失敗');
-            await ctx.reply(`❌ 預約失敗：${(error as Error).message}`);
         }
     });
 
@@ -190,12 +154,8 @@ export function initBot(): Telegraf {
             await ctx.answerCbQuery('⏳ 正在取消...');
             await calendarManager.deleteEvent(eventId);
 
-            try {
-                const { invalidateEventCache } = await import('./notifier');
-                invalidateEventCache();
-            } catch (e) {
-                console.error('Failed to invalidate cache:', e);
-            }
+            const { invalidateEventCache } = await import('./notifier');
+            invalidateEventCache();
 
             await ctx.editMessageText('✅ 預約已成功取消。');
         } catch (error) {

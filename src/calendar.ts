@@ -1,4 +1,5 @@
 import { BookingDetails, TimeSlot, CalendarEvent } from './types';
+import { formatDateISO } from './utils';
 import * as dotenv from 'dotenv';
 dotenv.config();
 
@@ -60,13 +61,8 @@ async function gasCall<T>(action: string, body: Record<string, unknown>): Promis
 }
 
 export class CalendarManager {
-    private toDateStr(d: Date): string {
-        const shifted = new Date(d.getTime() + 8 * 3600000);
-        return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}-${String(shifted.getUTCDate()).padStart(2, '0')}`;
-    }
-
     async getFreeSlots(date: Date): Promise<TimeSlot[]> {
-        const dateStr = this.toDateStr(date);
+        const dateStr = formatDateISO(date);
         const result = await gasCall<{ slots: GasSlot[] }>('getFreeSlots', { date: dateStr });
         return result.slots.map((s: GasSlot) => ({
             start: new Date(s.start),
