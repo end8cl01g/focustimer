@@ -794,9 +794,35 @@
 
         // --- Helpers ---
         function nowTaipei() {
-            // Simple approximation or just use local time if user is in TZ
-            // Ideally we rely on the device time being correct
             return new Date();
+        }
+
+        // --- Server-side timer state ---
+        let _saveTimeout = null;
+        function saveTimerState() {
+            // Debounce: save at most once per 2s
+            if (_saveTimeout) return;
+            _saveTimeout = setTimeout(() => { _saveTimeout = null; }, 2000);
+            fetch('/api/timer-state', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ activeTaskId, timers })
+            }).catch(e => console.error('Save state error:', e));
+        }
+
+        async function loadTimerState() {
+            try {
+                const res = await fetch('/api/timer-state');
+                if (!res.ok) return;
+                const state = await res.json();
+                if (state.activeTaskId) activeTaskId = state.activeTaskId;
+                if (state.timers) {
+                    // Merge: server state wins for existing timers
+                    for (const id of Object.keys(state.timers)) {
+                        timers[id] = state.timers[id];
+                    }
+                }
+            } catch (e) { console.error('Load state error:', e); }
         }
 
         async function init() {
@@ -808,11 +834,20 @@
                 // Filter out completed tasks for today
                 tasks = allTasks.filter(t => !completedState.ids.includes(t.id));
 
+                // Initialize timer entries for new tasks
                 tasks.forEach(t => {
                     if (!timers[t.id]) timers[t.id] = { seconds: 0, isRunning: false, autoStarted: false };
                 });
 
-                decideActiveTask();
+                // Load server-side state (overwrites in-memory with persisted values)
+                await loadTimerState();
+
+                // Validate activeTaskId still exists in today's tasks
+                if (activeTaskId && !tasks.find(t => t.id === activeTaskId)) {
+                    activeTaskId = null;
+                }
+
+                if (!activeTaskId) decideActiveTask();
                 renderUI();
 
                 loadingEl.style.opacity = 0;
@@ -843,6 +878,7 @@
                 timers[activeTaskId].isRunning = false; // Pause old
             }
             activeTaskId = id;
+            saveTimerState();
             renderUI();
         }
 
@@ -864,11 +900,13 @@
             if (forceStart) {
                 if (!t.isRunning) {
                     t.isRunning = true;
+                    saveTimerState();
                     renderUI();
                     if (webApp.HapticFeedback) webApp.HapticFeedback.notificationOccurred('success');
                 }
             } else {
                 t.isRunning = !t.isRunning;
+                saveTimerState();
                 renderUI();
                 if (webApp.HapticFeedback) webApp.HapticFeedback.impactOccurred('medium');
             }
@@ -1024,6 +1062,9 @@
                 if (activeTaskId) updateRing(tasks.find(t => t.id === activeTaskId));
 
             }, 1000);
+
+            // Periodic server save every 10 seconds
+            setInterval(saveTimerState, 10000);
         }
 
         // --- Modal Logic ---

@@ -1,4 +1,5 @@
 import path from 'path';
+import fs from 'fs';
 import express from 'express';
 import bot, { calendarManager, getSavedChatId } from './bot';
 import * as dotenv from 'dotenv';
@@ -57,6 +58,55 @@ app.post('/api/events', async (req, res) => {
             details: error instanceof Error ? error.message : String(error)
         });
     }
+});
+
+// ─── Timer State Persistence ───
+const TIMER_STATE_FILE = path.join(__dirname, '../data/timer_state.json');
+
+function readTimerState(): any {
+    try {
+        if (fs.existsSync(TIMER_STATE_FILE)) {
+            return JSON.parse(fs.readFileSync(TIMER_STATE_FILE, 'utf-8'));
+        }
+    } catch (e) { console.error('Error reading timer state:', e); }
+    return { activeTaskId: null, timers: {}, lastTick: Date.now() };
+}
+
+function writeTimerState(state: any) {
+    try {
+        const dir = path.dirname(TIMER_STATE_FILE);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(TIMER_STATE_FILE, JSON.stringify(state));
+    } catch (e) { console.error('Error writing timer state:', e); }
+}
+
+// GET: Load state (auto-catch-up running timers)
+app.get('/api/timer-state', (_req, res) => {
+    const state = readTimerState();
+    const now = Date.now();
+    const lastTick = state.lastTick || now;
+    const diffSec = Math.floor((now - lastTick) / 1000);
+
+    // Catch up running timers
+    if (state.timers && diffSec > 0) {
+        for (const id of Object.keys(state.timers)) {
+            if (state.timers[id].isRunning) {
+                state.timers[id].seconds += diffSec;
+            }
+        }
+        state.lastTick = now;
+        writeTimerState(state);
+    }
+
+    res.json(state);
+});
+
+// POST: Save state
+app.post('/api/timer-state', (req, res) => {
+    const { activeTaskId, timers } = req.body;
+    const state = { activeTaskId, timers, lastTick: Date.now() };
+    writeTimerState(state);
+    res.json({ ok: true });
 });
 
 // ─── Notification Loop ───

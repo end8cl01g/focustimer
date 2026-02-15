@@ -78,3 +78,37 @@
 2.  **GCP Resources**: 執行 `.\setup.ps1` 初始化。
 3.  **Deploy**: 執行 `gcloud builds submit --config cloudbuild.yaml .`。
 4.  **Start Bot**: 對 Bot 發送 `/start` 以啟用通知功能。
+
+---
+
+<skills>
+
+You have additional SKILLs documented in directories containing a "SKILL.md" file.
+
+These skills are:
+ - hugging-face-cli -> ".agent/skills/hugging-face-cli/SKILL.md"
+ - hugging-face-datasets -> ".agent/skills/hugging-face-datasets/SKILL.md"
+ - hugging-face-evaluation -> ".agent/skills/hugging-face-evaluation/SKILL.md"
+ - hugging-face-jobs -> ".agent/skills/hugging-face-jobs/SKILL.md"
+ - hugging-face-model-trainer -> ".agent/skills/hugging-face-model-trainer/SKILL.md"
+ - hugging-face-paper-publisher -> ".agent/skills/hugging-face-paper-publisher/SKILL.md"
+ - hugging-face-tool-builder -> ".agent/skills/hugging-face-tool-builder/SKILL.md"
+ - hugging-face-trackio -> ".agent/skills/hugging-face-trackio/SKILL.md"
+
+IMPORTANT: You MUST read the SKILL.md file whenever the description of the skills matches the user intent, or may help accomplish their task. 
+
+<available_skills>
+
+hugging-face-cli: `Execute Hugging Face Hub operations using the hf CLI. Use when the user needs to download models/datasets/spaces, upload files to Hub repositories, create repos, manage local cache, or run compute jobs on HF infrastructure. Covers authentication, file transfers, repository creation, cache operations, and cloud compute.`
+hugging-face-datasets: `Create and manage datasets on Hugging Face Hub. Supports initializing repos, defining configs/system prompts, streaming row updates, and SQL-based dataset querying/transformation. Designed to work alongside HF MCP server for comprehensive dataset workflows.`
+hugging-face-evaluation: `Add and manage evaluation results in Hugging Face model cards. Supports extracting eval tables from README content, importing scores from Artificial Analysis API, and running custom model evaluations with vLLM/lighteval. Works with the model-index metadata format.`
+hugging-face-jobs: `This skill should be used when users want to run any workload on Hugging Face Jobs infrastructure. Covers UV scripts, Docker-based jobs, hardware selection, cost estimation, authentication with tokens, secrets management, timeout configuration, and result persistence.`
+hugging-face-model-trainer: `Train or fine-tune language models using TRL on Hugging Face Jobs infrastructure. Covers SFT, DPO, GRPO and reward modeling training methods, plus GGUF conversion for local deployment.`
+hugging-face-paper-publisher: `Publish and manage research papers on Hugging Face Hub. Supports creating paper pages, linking papers to models/datasets, claiming authorship, and generating professional markdown-based research articles.`
+hugging-face-tool-builder: `Build tools/scripts using data from the Hugging Face API. Useful when chaining or combining API calls or the task will be repeated/automated.`
+hugging-face-trackio: `Track and visualize ML training experiments with Trackio. Use when logging metrics during training (Python API) or retrieving/analyzing logged metrics (CLI). Supports real-time dashboard visualization, HF Space syncing, and JSON output for automation.`
+</available_skills>
+
+Paths referenced within SKILL folders are relative to that SKILL. For example the hugging-face-datasets `scripts/example.py` would be referenced as `.agent/skills/hugging-face-datasets/scripts/example.py`.
+
+</skills>
