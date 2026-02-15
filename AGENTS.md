@@ -39,3 +39,30 @@
 - **編譯**: `npm run build`
 - **運行**: `npm start`
 - **檢查**: `npm run lint`
+
+---
+
+<skills>
+
+You have additional SKILLs documented in directories containing a "SKILL.md" file.
+
+These skills are:
+ - frontend-design -> ".skills/frontend-design/SKILL.md"
+ - code-review -> ".skills/code-review/SKILL.md"
+ - code-refactoring -> ".skills/code-refactoring/SKILL.md"
+ - javascript-typescript -> ".skills/javascript-typescript/SKILL.md"
+
+IMPORTANT: You MUST read the SKILL.md file whenever the description of the skills matches the user intent, or may help accomplish their task.
+
+<available_skills>
+
+frontend-design: `Create distinctive, production-grade frontend interfaces with high design quality. Use when building web components, pages, dashboards, React components, HTML/CSS layouts, or styling/beautifying any web UI.`
+code-review: `Automated code review for pull requests. Analyzes code for quality, security, performance, and best practices. Use when reviewing code changes, PRs, or doing code audits.`
+code-refactoring: `Code refactoring patterns and techniques for improving code quality without changing behavior. Use for cleaning up legacy code, reducing complexity, or improving maintainability.`
+javascript-typescript: `JavaScript and TypeScript development with ES6+, Node.js, React, and modern web frameworks. Use for frontend, backend, or full-stack JavaScript/TypeScript projects.`
+
+</available_skills>
+
+Paths referenced within SKILL folders are relative to that SKILL directory.
+
+</skills>
