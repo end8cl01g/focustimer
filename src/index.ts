@@ -1,221 +1,115 @@
 import path from 'path';
-import fs from 'fs';
 import express from 'express';
-import bot, { calendarManager, getSavedChatId } from './bot';
 import * as dotenv from 'dotenv';
+import { loadSecrets } from "./secrets";
+import { readTimerState, writeTimerState, catchUpTimerState } from './timerState';
 
 dotenv.config();
 
-const app = express();
-app.use(express.static(path.join(__dirname, '../public')));
+async function startServer() {
+    // 1. Load Secrets
+    await loadSecrets();
 
-// Health check
-app.get('/health', (_req, res) => {
-    res.json({ status: 'ok', mode: process.env.NODE_ENV || 'development' });
-});
+    // 2. Initialize modules
+    const { default: getBot, calendarManager } = await import('./bot');
+    const { startNotificationLoop, invalidateEventCache } = await import('./notifier');
 
-// API for Mini App
-app.get('/api/tasks', async (_req, res) => {
-    try {
-        const now = new Date();
-        const taipeiNow = new Date(now.getTime() + 8 * 3600000);
-        const startOfDay = new Date(Date.UTC(taipeiNow.getUTCFullYear(), taipeiNow.getUTCMonth(), taipeiNow.getUTCDate(), -8, 0, 0));
-        const endOfDay = new Date(Date.UTC(taipeiNow.getUTCFullYear(), taipeiNow.getUTCMonth(), taipeiNow.getUTCDate(), 15, 59, 59, 999));
+    const bot = getBot();
 
-        const events = await calendarManager.listEvents(startOfDay, endOfDay);
-        res.json(events);
-    } catch (error) {
-        console.error('API /api/tasks error:', error);
-        res.status(500).json({
-            error: 'Failed to fetch tasks',
-            details: error instanceof Error ? error.message : String(error)
-        });
-    }
-});
+    const app = express();
+    app.use(express.static(path.join(__dirname, '../public')));
+    app.use(express.json());
 
-// API for Creating Event
-app.use(express.json()); // Enable JSON parsing
-app.post('/api/events', async (req, res) => {
-    try {
-        const { title, description, start, end } = req.body;
-
-        if (!title || !start || !end) {
-            return res.status(400).json({ error: 'Missing required fields' });
-        }
-
-        const event = await calendarManager.createEvent({
-            summary: title,
-            description: description || 'Created via Focus Timer',
-            startTime: new Date(start),
-            endTime: new Date(end),
-        });
-
-        res.json(event);
-    } catch (error) {
-        console.error('API POST /api/events error:', error);
-        res.status(500).json({
-            error: 'Failed to create event',
-            details: error instanceof Error ? error.message : String(error)
-        });
-    }
-});
-
-// ─── Timer State Persistence ───
-const TIMER_STATE_FILE = path.join(__dirname, '../data/timer_state.json');
-
-function readTimerState(): any {
-    try {
-        if (fs.existsSync(TIMER_STATE_FILE)) {
-            return JSON.parse(fs.readFileSync(TIMER_STATE_FILE, 'utf-8'));
-        }
-    } catch (e) { console.error('Error reading timer state:', e); }
-    return { activeTaskId: null, timers: {}, lastTick: Date.now() };
-}
-
-function writeTimerState(state: any) {
-    try {
-        const dir = path.dirname(TIMER_STATE_FILE);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(TIMER_STATE_FILE, JSON.stringify(state));
-    } catch (e) { console.error('Error writing timer state:', e); }
-}
-
-// GET: Load state (auto-catch-up running timers)
-app.get('/api/timer-state', (_req, res) => {
-    const state = readTimerState();
-    const now = Date.now();
-    const lastTick = state.lastTick || now;
-    const diffSec = Math.floor((now - lastTick) / 1000);
-
-    // Catch up running timers
-    if (state.timers && diffSec > 0) {
-        for (const id of Object.keys(state.timers)) {
-            if (state.timers[id].isRunning) {
-                state.timers[id].seconds += diffSec;
-            }
-        }
-        state.lastTick = now;
-        writeTimerState(state);
-    }
-
-    res.json(state);
-});
-
-// POST: Save state
-app.post('/api/timer-state', (req, res) => {
-    const { activeTaskId, timers } = req.body;
-    const state = { activeTaskId, timers, lastTick: Date.now() };
-    writeTimerState(state);
-    res.json({ ok: true });
-});
-
-// ─── Notification Loop ───
-const notifiedEvents = new Set<string>();
-
-// Clear notified set daily
-setInterval(() => {
-    notifiedEvents.clear();
-}, 24 * 60 * 60 * 1000);
-
-async function checkUpcomingEvents() {
-    const chatId = getSavedChatId();
-    if (!chatId) return;
-
-    try {
-        const now = new Date();
-        const taipeiNow = new Date(now.getTime() + 8 * 3600000);
-        // Look ahead 24 hours just in case, but filter for near future
-        const startOfDay = new Date(Date.UTC(taipeiNow.getUTCFullYear(), taipeiNow.getUTCMonth(), taipeiNow.getUTCDate(), -8, 0, 0));
-        const endOfDay = new Date(Date.UTC(taipeiNow.getUTCFullYear(), taipeiNow.getUTCMonth(), taipeiNow.getUTCDate(), 15, 59, 59, 999));
-
-        const events = await calendarManager.listEvents(startOfDay, endOfDay);
-
-        for (const event of events) {
-            const start = new Date(event.start);
-            const diff = start.getTime() - now.getTime();
-
-            // Notify if starting within 90 seconds (and not already notified)
-            // also ensure it's not too old (>-30s) so we don't notify old stuff on restart
-            if (diff <= 90000 && diff > -30000 && !notifiedEvents.has(event.id)) {
-                notifiedEvents.add(event.id);
-                const timeStr = start.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Taipei' });
-
-                await bot.telegram.sendMessage(chatId, `🔔 <b>Task Starting:</b> ${event.title}\n⏰ ${timeStr}`, { parse_mode: 'HTML' });
-                console.log(`Notification sent for: ${event.title}`);
-            }
-        }
-    } catch (e) {
-        console.error('Notification loop error:', e);
-    }
-}
-
-// Check every 60 seconds
-setInterval(checkUpcomingEvents, 60000);
-
-const secretPath = `/webhook/${process.env.TELEGRAM_BOT_TOKEN}`;
-
-// Debug Logging Middleware
-app.use((req, res, next) => {
-    if (req.path.startsWith('/webhook')) {
-        console.log(`[Webhook] ${req.method} ${req.path}`);
-        // Log body if available (parsed by express.json())
-        if (req.body) console.log('[Webhook Body]', JSON.stringify(req.body).substring(0, 500));
-    }
-    next();
-});
-
-if (process.env.NODE_ENV === 'production') {
-    app.use(bot.webhookCallback(secretPath));
-
-    // Auto-register webhook on startup
-    if (process.env.SERVICE_URL) {
-        const webhookUrl = `${process.env.SERVICE_URL}${secretPath}`;
-        bot.telegram.setWebhook(webhookUrl)
-            .then(() => console.log(`✅ Webhook registered: ${webhookUrl}`))
-            .catch((err) => console.error('❌ Webhook registration failed:', err));
-    } else {
-        console.warn('⚠️ SERVICE_URL not set — webhook not auto-registered');
-    }
-} else {
-    // Local dev: polling mode. Delete any existing webhook first.
-    bot.telegram.deleteWebhook()
-        .then(() => {
-            bot.launch();
-            console.log('🤖 Bot started in polling mode');
-        })
-        .catch((err) => console.error('Failed to delete webhook:', err));
-}
-
-const port = process.env.PORT || 8080;
-const server = app.listen(port, () => {
-    console.log(`🚀 Server running on port ${port}`);
-});
-
-// ─── SIGTERM Keep-Warm Loop ───
-process.on('SIGTERM', async () => {
-    console.log('SIGTERM received. Starting keep-warm ping...');
-
-    if (process.env.SERVICE_URL) {
-        try {
-            const res = await fetch(process.env.SERVICE_URL, {
-                signal: AbortSignal.timeout(5000),
-            });
-            console.log(`Keep-warm ping → ${res.status}`);
-        } catch (err) {
-            console.error('Keep-warm ping failed:', err);
-        }
-    }
-
-    try { bot.stop('SIGTERM'); } catch { }
-    server.close(() => {
-        console.log('Server closed.');
-        process.exit(0);
+    // Health check
+    app.get('/health', (_req, res) => {
+        res.json({ status: 'ok', mode: process.env.NODE_ENV || 'development' });
     });
 
-    setTimeout(() => process.exit(1), 8000);
-});
+    // API: Tasks
+    app.get('/api/tasks', async (_req, res) => {
+        try {
+            const now = new Date();
+            const taipeiNow = new Date(now.getTime() + 8 * 3600000);
+            const startOfDay = new Date(Date.UTC(taipeiNow.getUTCFullYear(), taipeiNow.getUTCMonth(), taipeiNow.getUTCDate(), -8, 0, 0));
+            const endOfDay = new Date(Date.UTC(taipeiNow.getUTCFullYear(), taipeiNow.getUTCMonth(), taipeiNow.getUTCDate(), 15, 59, 59, 999));
 
-process.on('SIGINT', () => {
-    try { bot.stop('SIGINT'); } catch { }
-    server.close(() => process.exit(0));
+            const events = await calendarManager.listEvents(startOfDay, endOfDay);
+            res.json(events);
+        } catch (error) {
+            console.error('API /api/tasks error:', error);
+            res.status(500).json({ error: 'Failed to fetch tasks', details: (error as Error).message });
+        }
+    });
+
+    // API: Create Event
+    app.post('/api/events', async (req, res) => {
+        try {
+            const { title, description, start, end } = req.body;
+            if (!title || !start || !end) return res.status(400).json({ error: 'Missing fields' });
+
+            const event = await calendarManager.createEvent({
+                summary: title,
+                description: description || 'Created via Focus Timer',
+                startTime: new Date(start),
+                endTime: new Date(end),
+            });
+            invalidateEventCache();
+            res.json(event);
+        } catch (error) {
+            console.error('API POST /api/events error:', error);
+            res.status(500).json({ error: 'Failed to create event', details: (error as Error).message });
+        }
+    });
+
+    // API: Timer State
+    app.get('/api/timer-state', (_req, res) => {
+        let state = readTimerState();
+        state = catchUpTimerState(state);
+        res.json(state);
+    });
+
+    app.post('/api/timer-state', (req, res) => {
+        const { activeTaskId, timers } = req.body;
+        writeTimerState({ activeTaskId, timers, lastTick: Date.now() });
+        res.json({ ok: true });
+    });
+
+    // 3. Start Background Tasks
+    startNotificationLoop(bot, calendarManager);
+
+    // 4. Bot Webhook / Polling
+    const secretPath = `/webhook/${process.env.TELEGRAM_BOT_TOKEN}`;
+    if (process.env.NODE_ENV === 'production') {
+        app.use(bot.webhookCallback(secretPath));
+        if (process.env.SERVICE_URL) {
+            const webhookUrl = `${process.env.SERVICE_URL}${secretPath}`;
+            bot.telegram.setWebhook(webhookUrl)
+                .then(() => console.log(`✅ Webhook registered: ${webhookUrl}`))
+                .catch(err => console.error('❌ Webhook failure:', err));
+        }
+    } else {
+        bot.telegram.deleteWebhook().then(() => {
+            bot.launch();
+            console.log('🤖 Bot started (Polling)');
+        }).catch(err => console.error('Bot launch error:', err));
+    }
+
+    // 5. Start Listening
+    const port = process.env.PORT || 8080;
+    const server = app.listen(port, () => console.log(`🚀 Server running on port ${port}`));
+
+    // 6. Cleanup
+    const shutdown = async (signal: string) => {
+        console.log(`${signal} received. Shutting down...`);
+        try { bot.stop(signal); } catch (e) { console.error('Bot stop error', e); }
+        server.close(() => process.exit(0));
+        setTimeout(() => process.exit(1), 5000);
+    };
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
+}
+
+startServer().catch(err => {
+    console.error('Startup crash:', err);
+    process.exit(1);
 });
