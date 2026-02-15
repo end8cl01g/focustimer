@@ -112,6 +112,12 @@ export function initBot(): Telegraf {
                 startTime,
                 endTime,
             });
+
+            try {
+                const { invalidateEventCache } = await import('./notifier');
+                invalidateEventCache();
+            } catch (e) { console.error('Failed to invalidate cache:', e); }
+
             await ctx.editMessageText(
                 `✅ 預約成功！\n` +
                 `🕐 ${formatDateTime(startTime)} - ${formatTime(endTime)}\n` +
@@ -125,7 +131,78 @@ export function initBot(): Telegraf {
     });
 
     bot.hears('📝 管理我的預約', async (ctx) => {
-        ctx.reply('此功能開發中 🚧');
+        try {
+            await ctx.reply('⏳ 正在讀取您的預約...');
+            const now = new Date();
+            // Fetch events for the next 7 days
+            const end = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+            const events = await calendarManager.listEvents(now, end);
+
+            if (events.length === 0) {
+                return ctx.reply('📅 您目前沒有未來的預約。');
+            }
+
+            await ctx.reply('以下是您接下來 7 天的行程：');
+
+            for (const event of events) {
+                const startTime = new Date(event.start);
+                const endTime = new Date(event.end);
+                const timeStr = `${formatDate(startTime)} ${formatTime(startTime)} - ${formatTime(endTime)}`;
+
+                await ctx.reply(
+                    `📌 ${event.title}\n⏰ ${timeStr}`,
+                    Markup.inlineKeyboard([
+                        [Markup.button.callback('❌ 取消預約', `confirm_delete:${event.id}`)]
+                    ])
+                );
+            }
+        } catch (error) {
+            console.error('Manage bookings error:', error);
+            ctx.reply('❌ 無法讀取預約，請稍後再試。');
+        }
+    });
+
+    bot.action(/confirm_delete:(.+)/, async (ctx) => {
+        const eventId = ctx.match[1];
+        await ctx.editMessageReplyMarkup({
+            inline_keyboard: [
+                [
+                    Markup.button.callback('✅ 確定取消', `delete_event:${eventId}`),
+                    Markup.button.callback('🔙 返回', `keep_event:${eventId}`)
+                ]
+            ]
+        });
+    });
+
+    bot.action(/keep_event:(.+)/, async (ctx) => {
+        const eventId = ctx.match[1];
+        await ctx.editMessageReplyMarkup({
+            inline_keyboard: [
+                [Markup.button.callback('❌ 取消預約', `confirm_delete:${eventId}`)]
+            ]
+        });
+    });
+
+    bot.action(/delete_event:(.+)/, async (ctx) => {
+        const eventId = ctx.match[1];
+        try {
+            await ctx.answerCbQuery('⏳ 正在取消...');
+            await calendarManager.deleteEvent(eventId);
+
+            try {
+                const { invalidateEventCache } = await import('./notifier');
+                invalidateEventCache();
+            } catch (e) {
+                console.error('Failed to invalidate cache:', e);
+            }
+
+            await ctx.editMessageText('✅ 預約已成功取消。');
+        } catch (error) {
+            console.error('Delete event error:', error);
+            await ctx.answerCbQuery('❌ 取消失敗');
+            await ctx.reply(`❌ 取消失敗：${(error as Error).message}`);
+        }
     });
 
     bot.help((ctx) => ctx.reply(
@@ -133,7 +210,7 @@ export function initBot(): Telegraf {
         '/start - 顯示主選單\n' +
         '🚀 開啟專注定時器 - 開啟網頁版定時器\n' +
         '📅 查詢今日日曆 - 查看今日行程\n' +
-        '📝 管理我的預約 - (開發中)'
+        '📝 管理我的預約 - 列出並管理未來的行程'
     ));
 
     bot.catch((err, ctx) => {

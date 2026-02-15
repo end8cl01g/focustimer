@@ -1,220 +1,133 @@
-
         const webApp = window.Telegram.WebApp;
-        webApp.ready();
         webApp.expand();
 
-        const R = 90;
-        const CIRCUMFERENCE = 2 * Math.PI * R;
+        // Constants
+        const CIRCUMFERENCE = 2 * Math.PI * 90;
 
+        // State
         let tasks = [];
-        let activeTaskId = null;
         let timers = {};
+        let activeTaskId = null;
         let ticker = null;
+        let subtasks = JSON.parse(localStorage.getItem('focus_timer_subtasks') || '{}');
 
-        const appEl = document.getElementById('app');
-        const loadingEl = document.getElementById('loading');
-        const ringProgress = document.getElementById('ring-progress');
+        // DOM Elements
         const timerDisplay = document.getElementById('timer-display');
+        const ringProgress = document.getElementById('ring-progress');
         const activeTitle = document.getElementById('active-title');
         const activeSchedule = document.getElementById('active-schedule');
         const btnToggle = document.getElementById('btn-toggle');
         const listContainer = document.getElementById('list-container');
-        const modalOverlay = document.getElementById('modal-overlay');
-
-        // State Persistence
-        const TODAY = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
-        let completedState = JSON.parse(localStorage.getItem('focus_completed_tasks')) || { date: TODAY, ids: [] };
-
-        // Reset if new day
-        if (completedState.date !== TODAY) {
-            completedState = { date: TODAY, ids: [] };
-            localStorage.setItem('focus_completed_tasks', JSON.stringify(completedState));
-        }
-
-        // Subtasks State
-        let subtasks = JSON.parse(localStorage.getItem('focus_timer_subtasks')) || {}; // { taskId: [ {id, text, completed} ] }
         const subtasksSection = document.getElementById('subtasks-section');
         const subtaskListEl = document.getElementById('subtask-list');
         const subtaskInput = document.getElementById('subtask-input');
+        const modalOverlay = document.getElementById('modal-overlay');
+        const actionSheet = document.getElementById('action-sheet');
+        const loading = document.getElementById('loading');
 
-        // Initial
+        // Initialization
         ringProgress.style.strokeDasharray = `${CIRCUMFERENCE} ${CIRCUMFERENCE}`;
-        ringProgress.style.strokeDashoffset = 0;
-
-        // --- Helpers ---
-        function nowTaipei() {
-            return new Date();
-        }
-
-        // --- Server-side timer state ---
-        let _saveTimeout = null;
-        function saveTimerState() {
-            // Debounce: save at most once per 2s
-            if (_saveTimeout) return;
-            _saveTimeout = setTimeout(() => { _saveTimeout = null; }, 2000);
-            fetch('/api/timer-state', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ activeTaskId, timers })
-            }).catch(e => console.error('Save state error:', e));
-        }
-
-        async function loadTimerState() {
-            try {
-                const res = await fetch('/api/timer-state');
-                if (!res.ok) return;
-                const state = await res.json();
-                if (state.activeTaskId) activeTaskId = state.activeTaskId;
-                if (state.timers) {
-                    // Merge: server state wins for existing timers
-                    for (const id of Object.keys(state.timers)) {
-                        timers[id] = state.timers[id];
-                    }
-                }
-            } catch (e) { console.error('Load state error:', e); }
-        }
 
         async function init() {
             try {
-                const res = await fetch('/api/tasks');
-                if (!res.ok) throw new Error('API Failed');
-                const allTasks = await res.json();
+                // Fetch Timer State
+                const stateRes = await fetch('/api/timer-state');
+                const state = await stateRes.json();
+                activeTaskId = state.activeTaskId;
+                timers = state.timers;
 
-                // Filter out completed tasks for today
-                tasks = allTasks.filter(t => !completedState.ids.includes(t.id));
+                // Fetch Tasks
+                const taskRes = await fetch('/api/tasks');
+                tasks = await taskRes.json();
 
-                // Initialize timer entries for new tasks
-                tasks.forEach(t => {
-                    if (!timers[t.id]) timers[t.id] = { seconds: 0, isRunning: false, autoStarted: false };
-                });
-
-                // Load server-side state (overwrites in-memory with persisted values)
-                await loadTimerState();
-
-                // Validate activeTaskId still exists in today's tasks
+                // If active task is missing (maybe deleted), reset
                 if (activeTaskId && !tasks.find(t => t.id === activeTaskId)) {
                     activeTaskId = null;
                 }
 
-                if (!activeTaskId) decideActiveTask();
+                // Ensure all tasks have a timer entry
+                tasks.forEach(t => {
+                    if (!timers[t.id]) {
+                        timers[t.id] = { seconds: 0, isRunning: false };
+                    }
+                });
+
                 renderUI();
-
-                loadingEl.style.opacity = 0;
-                setTimeout(() => { loadingEl.style.display = 'none'; appEl.classList.add('visible'); }, 500);
-
                 startTicker();
+                loading.style.display = 'none';
+                document.getElementById('app').style.display = 'flex';
+                setTimeout(() => document.getElementById('app').classList.add('visible'), 10);
             } catch (e) {
-                console.error(e);
-                loadingEl.innerHTML = `<p style="color:var(--danger-color)">Error: ${e.message}</p>`;
+                console.error('Init error:', e);
+                alert('Failed to load data. Please refresh.');
             }
         }
 
-        function decideActiveTask() {
-            if (tasks.length === 0) return;
-            const now = new Date();
-            // 1. Ongoing
-            const current = tasks.find(t => new Date(t.start) <= now && new Date(t.end) > now);
-            if (current) { activeTaskId = current.id; return; }
-            // 2. Next
-            const next = tasks.find(t => new Date(t.start) > now);
-            if (next) { activeTaskId = next.id; return; }
-            // 3. Fallback
-            activeTaskId = tasks[0].id;
+        async function saveTimerState() {
+            if (!activeTaskId) return;
+            try {
+                await fetch('/api/timer-state', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ activeTaskId, timers })
+                });
+            } catch (e) { console.error('Save error:', e); }
+        }
+
+        function formatTime(s) {
+            const m = Math.floor(s / 60);
+            const sec = s % 60;
+            return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+        }
+
+        function formatSchedule(dateStr) {
+            const d = new Date(dateStr);
+            return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
         }
 
         function setActiveTask(id) {
+            if (activeTaskId === id) return;
             if (activeTaskId && timers[activeTaskId].isRunning) {
-                timers[activeTaskId].isRunning = false; // Pause old
+                if (!confirm('Switch task? Current timer will stop.')) return;
+                timers[activeTaskId].isRunning = false;
             }
             activeTaskId = id;
             saveTimerState();
             renderUI();
         }
 
-        function formatTime(s) {
-            const m = Math.floor(s / 60);
-            const sec = s % 60;
-            const h = Math.floor(m / 60);
-            if (h > 0) return `${h}:${String(m % 60).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-            return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-        }
-
-        function formatSchedule(iso) {
-            return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-        }
-
-        function toggleTimer(forceStart = false) {
+        function toggleTimer(auto = false) {
             if (!activeTaskId) return;
-            const t = timers[activeTaskId];
-            if (forceStart) {
-                if (!t.isRunning) {
-                    t.isRunning = true;
-                    saveTimerState();
-                    renderUI();
-                    if (webApp.HapticFeedback) webApp.HapticFeedback.notificationOccurred('success');
-                }
-            } else {
-                t.isRunning = !t.isRunning;
-                saveTimerState();
-                renderUI();
+            const tState = timers[activeTaskId];
+            tState.isRunning = !tState.isRunning;
+
+            if (tState.isRunning) {
                 if (webApp.HapticFeedback) webApp.HapticFeedback.impactOccurred('medium');
             }
-        }
 
-        function completeTask() {
-            if (!activeTaskId) return;
-            const task = tasks.find(t => t.id === activeTaskId);
-            const duration = timers[activeTaskId].seconds;
-            if (webApp.HapticFeedback) webApp.HapticFeedback.notificationOccurred('success');
-
-            // Mark locally as completed
-            completedState.ids.push(activeTaskId);
-            localStorage.setItem('focus_completed_tasks', JSON.stringify(completedState));
-
-            webApp.sendData(JSON.stringify({
-                action: 'complete_task', taskId: task.id, title: task.title, duration: duration
-            }));
-
-            // Refresh to hide
-            init();
+            if (!auto) saveTimerState();
+            renderUI();
         }
 
         function renewTask() {
-            if (!activeTaskId) return;
-            const sheet = document.getElementById('action-sheet-overlay');
-            sheet.classList.add('visible');
+            showActionSheet();
         }
 
-        function hideActionSheet() {
-            document.getElementById('action-sheet-overlay').classList.remove('visible');
-        }
+        function showActionSheet() { actionSheet.classList.add('visible'); }
+        function hideActionSheet() { actionSheet.classList.remove('visible'); }
 
-        async function executeRenewNow() {
-            hideActionSheet();
-            if (!activeTaskId) return;
-            const oldTask = tasks.find(t => t.id === activeTaskId);
-            if (!oldTask) return;
-
-            const btn = document.getElementById('btn-toggle');
-            const originalText = btn.innerText;
-            btn.innerText = "RENEWING...";
-
+        function executeRenewNow() {
+            const task = tasks.find(t => t.id === activeTaskId);
             const now = new Date();
-            const start = now.toISOString();
-            const endObj = new Date(now.getTime() + 30 * 60000);
-            const end = endObj.toISOString();
+            const end = new Date(now.getTime() + 60 * 60 * 1000);
 
-            try {
-                const res = await fetch('/api/events', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title: oldTask.title, start, end })
-                });
-                if (!res.ok) throw new Error('Renew failed');
-                await init();
-            } catch (e) {
-                alert(e.message);
-                renderUI();
-            }
+            // Re-book for 1 hour from now
+            document.getElementById('input-title').value = task.title;
+            document.getElementById('input-start').value = toLocalISO(now);
+            document.getElementById('input-end').value = toLocalISO(end);
+
+            hideActionSheet();
+            createEvent();
         }
 
         function executeRenewCustom() {
@@ -227,50 +140,81 @@
         }
 
         function renderUI() {
+            if (!activeTaskId && tasks.length > 0) {
+                 // Auto select first if none
+                 activeTaskId = tasks[0].id;
+            }
+
             if (!activeTaskId) {
-                activeTitle.innerText = "No Tasks"; activeSchedule.innerText = "";
-                return;
-            }
-            const task = tasks.find(t => t.id === activeTaskId);
-            const timer = timers[activeTaskId];
-
-            const isExpired = new Date(task.end) < new Date();
-
-            activeTitle.innerText = task.title;
-            activeSchedule.innerText = `${formatSchedule(task.start)} - ${formatSchedule(task.end)}`;
-            timerDisplay.innerText = formatTime(timer.seconds);
-
-            // Button Logic
-            btnToggle.onclick = isExpired ? renewTask : () => toggleTimer();
-            if (isExpired) {
-                btnToggle.innerText = "RENEW SESSION";
-                btnToggle.classList.remove('active');
-                btnToggle.style.background = 'var(--text-secondary)'; // Visual cue
-            } else if (timer.isRunning) {
-                btnToggle.innerText = "PAUSE";
-                btnToggle.classList.add('active');
-                btnToggle.style.background = '';
+                activeTitle.innerText = "No Tasks Today";
+                activeSchedule.innerText = "Click + to book a session";
+                timerDisplay.innerText = "00:00";
+                btnToggle.style.display = 'none';
+                subtasksSection.style.display = 'none';
             } else {
-                btnToggle.innerText = "START FOCUS";
-                btnToggle.classList.remove('active');
-                btnToggle.style.background = '';
+                const task = tasks.find(t => t.id === activeTaskId);
+                const timer = timers[activeTaskId];
+                const isExpired = new Date(task.end) < new Date();
+
+                activeTitle.innerText = task.title;
+                activeSchedule.innerText = `${formatSchedule(task.start)} - ${formatSchedule(task.end)}`;
+                timerDisplay.innerText = formatTime(timer.seconds);
+                btnToggle.style.display = 'block';
+
+                // Button Logic
+                btnToggle.onclick = isExpired ? renewTask : () => toggleTimer();
+                if (isExpired) {
+                    btnToggle.innerText = "RENEW SESSION";
+                    btnToggle.classList.remove('active');
+                    btnToggle.style.background = 'var(--text-secondary)';
+                } else if (timer.isRunning) {
+                    btnToggle.innerText = "PAUSE";
+                    btnToggle.classList.add('active');
+                    btnToggle.style.background = '';
+                } else {
+                    btnToggle.innerText = "START FOCUS";
+                    btnToggle.classList.remove('active');
+                    btnToggle.style.background = '';
+                }
+
+                renderSubtasks(activeTaskId);
             }
 
-            renderSubtasks(activeTaskId);
-
-            const others = tasks.filter(t => t.id !== activeTaskId);
-            listContainer.innerHTML = others.map(t => `
-                <div class="list-item" onclick="setActiveTask('${t.id}')">
-                    <div class="item-title">${t.title}</div>
-                    <div class="item-time">${formatSchedule(t.start)}</div>
+            // Render Task List
+            listContainer.innerHTML = tasks.map(t => `
+                <div class="list-item ${t.id === activeTaskId ? 'selected' : ''}">
+                    <div class="item-content-wrapper" onclick="setActiveTask('${t.id}')">
+                        <div class="item-title">${t.title}</div>
+                        <div class="item-time">${formatSchedule(t.start)}</div>
+                    </div>
+                    <button class="btn-delete-event" onclick="deleteEvent(event, '${t.id}')">×</button>
                 </div>
             `).join('');
 
-            updateRing(task);
+            if (activeTaskId) updateRing(tasks.find(t => t.id === activeTaskId));
+        }
+
+        async function deleteEvent(e, id) {
+            e.stopPropagation();
+            if (!confirm('Delete this session?')) return;
+            try {
+                const res = await fetch(`/api/events/${id}`, { method: 'DELETE' });
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.details || data.error || 'Delete failed');
+                }
+                if (webApp.HapticFeedback) webApp.HapticFeedback.notificationOccurred('success');
+                await init();
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
         }
 
         function updateRing(task) {
-            if (!task) return;
+            if (!task) {
+                ringProgress.style.strokeDashoffset = CIRCUMFERENCE;
+                return;
+            }
             const now = new Date();
             const start = new Date(task.start);
             const end = new Date(task.end);
@@ -289,12 +233,9 @@
                 // 1. Auto-Start Logic
                 tasks.forEach(task => {
                     const tState = timers[task.id];
-                    // If time reached start, and we haven't auto-started yet
-                    // Tolerance: within last 2 seconds to avoid old tasks starting
                     const start = new Date(task.start);
                     const diff = now - start;
                     if (diff >= 0 && diff < 2000 && !tState.autoStarted) {
-                        console.log('Auto-starting task:', task.title);
                         tState.autoStarted = true;
                         if (activeTaskId !== task.id) setActiveTask(task.id);
                         toggleTimer(true);
@@ -312,22 +253,17 @@
 
             }, 1000);
 
-            // Periodic server save every 10 seconds
             setInterval(saveTimerState, 10000);
         }
 
         // --- Modal Logic ---
         function showModal(overrides = {}) {
             const now = new Date();
-
-            // Set Title
             const titleInput = document.getElementById('input-title');
             titleInput.value = overrides.title || '';
             document.getElementById('modal-title').innerText = overrides.title ? "Renew Session" : "New Focus Session";
 
-            // Default Schedule: Next hour or Overrides
             let start, end;
-
             if (overrides.start) {
                 start = new Date(overrides.start);
             } else {
@@ -345,7 +281,6 @@
 
             document.getElementById('input-start').value = toLocalISO(start);
             document.getElementById('input-end').value = toLocalISO(end);
-
             modalOverlay.classList.add('visible');
         }
 
@@ -358,63 +293,44 @@
         }
 
         async function createEvent() {
-            // Debug alert to confirm function call
-            // alert('Debug: Create Event Triggered');
-
             try {
-                const titleInput = document.getElementById('input-title');
-                const startInput = document.getElementById('input-start');
-                const endInput = document.getElementById('input-end');
+                const title = document.getElementById('input-title').value;
+                const start = document.getElementById('input-start').value;
+                const end = document.getElementById('input-end').value;
 
-                const title = titleInput.value;
-                const start = startInput.value;
-                const end = endInput.value;
-
-                if (!title) { alert('Missing Title'); return; }
-                if (!start) { alert('Missing Start Time'); return; }
-                if (!end) { alert('Missing End Time'); return; }
+                if (!title || !start || !end) { alert('Missing fields'); return; }
 
                 const btn = document.getElementById('btn-book');
-                const originalText = btn.innerText;
-                btn.innerText = 'Boo...';
+                btn.innerText = 'Booking...';
                 btn.disabled = true;
-
-                // Validate dates
-                const startDate = new Date(start);
-                const endDate = new Date(end);
-
-                if (isNaN(startDate.getTime())) throw new Error('Invalid Start Date: ' + start);
-                if (isNaN(endDate.getTime())) throw new Error('Invalid End Date: ' + end);
 
                 const res = await fetch('/api/events', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         title,
-                        start: startDate.toISOString(),
-                        end: endDate.toISOString()
+                        start: new Date(start).toISOString(),
+                        end: new Date(end).toISOString()
                     })
                 });
 
-                if (!res.ok) { const errorData = await res.json(); throw new Error(errorData.details || errorData.error || 'Booking failed'); }
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.details || data.error || 'Booking failed');
+                }
 
-                // Refresh list
+                if (webApp.HapticFeedback) webApp.HapticFeedback.notificationOccurred('success');
                 await init();
                 hideModal();
-                btn.innerText = 'Book';
-                btn.disabled = false;
             } catch (e) {
                 alert('Error: ' + e.message);
+            } finally {
                 const btn = document.getElementById('btn-book');
-                if (btn) {
-                    btn.innerText = 'Book';
-                    btn.disabled = false;
-                }
-                console.error(e);
+                btn.innerText = 'Book';
+                btn.disabled = false;
             }
         }
 
-        // Bind events
         document.getElementById('btn-book').addEventListener('click', createEvent);
 
         // --- Subtasks Logic ---
@@ -439,23 +355,14 @@
         function addSubtask() {
             const text = subtaskInput.value.trim();
             if (!text || !activeTaskId) return;
-
             if (!subtasks[activeTaskId]) subtasks[activeTaskId] = [];
-
-            subtasks[activeTaskId].push({
-                id: Date.now().toString(),
-                text: text,
-                completed: false
-            });
-
+            subtasks[activeTaskId].push({ id: Date.now().toString(), text, completed: false });
             saveSubtasks();
             subtaskInput.value = '';
             renderSubtasks(activeTaskId);
         }
 
-        function handleSubtaskInput(e) {
-            if (e.key === 'Enter') addSubtask();
-        }
+        function handleSubtaskInput(e) { if (e.key === 'Enter') addSubtask(); }
 
         function toggleSubtask(id) {
             if (!activeTaskId || !subtasks[activeTaskId]) return;
@@ -475,8 +382,6 @@
             renderSubtasks(activeTaskId);
         }
 
-        function saveSubtasks() {
-            localStorage.setItem('focus_timer_subtasks', JSON.stringify(subtasks));
-        }
+        function saveSubtasks() { localStorage.setItem('focus_timer_subtasks', JSON.stringify(subtasks)); }
 
         init();
